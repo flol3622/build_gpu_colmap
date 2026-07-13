@@ -5,6 +5,7 @@ custom-wheelhouse/
 out/
 cmake-build-*/
 .cmake/
+.cache/
 
 # CMake cache and generated files
 CMakeCache.txt

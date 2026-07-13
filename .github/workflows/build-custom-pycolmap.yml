@@ -74,6 +74,13 @@ jobs:
           docker system prune --all --force
           df -h
 
+      - name: Restore vcpkg binary cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/vcpkg
+          key: vcpkg-${{ inputs.cuda_version }}-${{ inputs.manylinux_tag }}-${{ hashFiles('vcpkg.json', 'overlay-ports/**', 'patches/**') }}
+
       - name: Build in the selected PyPA manylinux container
         env:
           PYTHON_VERSION: ${{ inputs.python_version }}
@@ -81,6 +88,7 @@ jobs:
           MANYLINUX_TAG: ${{ inputs.manylinux_tag }}
           WITH_CUDSS: ${{ inputs.cudss }}
           BUNDLE_CUDA: ${{ inputs.bundle_cuda }}
+          VCPKG_BINARY_SOURCES: clear;files,/workspace/.cache/vcpkg,readwrite
         run: |
           image="quay.io/pypa/${MANYLINUX_TAG}"
           docker pull "$image"
@@ -90,11 +98,19 @@ jobs:
             --env MANYLINUX_TAG \
             --env WITH_CUDSS \
             --env BUNDLE_CUDA \
+            --env VCPKG_BINARY_SOURCES \
             --env GITHUB_SHA \
             --volume "$GITHUB_WORKSPACE:/workspace" \
             --workdir /workspace \
             "$image" \
             bash .github/scripts/build_custom_manylinux_wheel.sh
+
+      - name: Save vcpkg binary cache
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/vcpkg
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       - name: List validated outputs
         run: |

@@ -88,7 +88,7 @@ dnf config-manager --add-repo \
 dnf clean all
 dnf install -y \
   autoconf automake bison curl flex git libtool make patch \
-  perl-IPC-Cmd pkgconf-pkg-config tar unzip wget which xz zip \
+  kernel-headers perl-IPC-Cmd pkgconf-pkg-config tar unzip wget which xz zip \
   "cuda-compiler-${CUDA_PACKAGE_SUFFIX}" \
   "cuda-libraries-devel-${CUDA_PACKAGE_SUFFIX}" \
   "cuda-nvtx-${CUDA_PACKAGE_SUFFIX}"
@@ -199,10 +199,10 @@ path.write_text(updated)
 PY
 
 rm -rf "$BUILD_ROOT" "$WHEELHOUSE"
-mkdir -p "$BUILD_ROOT" "$WHEELHOUSE"
+mkdir -p "$BUILD_ROOT" "$WHEELHOUSE" /workspace/.cache/vcpkg
 export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-$(nproc)}"
 export VCPKG_FORCE_SYSTEM_BINARIES=1
-export VCPKG_BINARY_SOURCES="${VCPKG_BINARY_SOURCES:-clear}"
+export VCPKG_BINARY_SOURCES="${VCPKG_BINARY_SOURCES:-clear;files,/workspace/.cache/vcpkg,readwrite}"
 
 CMAKE_ARGS=(
   -S /workspace
