@@ -90,7 +90,7 @@ dnf install -y \
   autoconf automake bison curl flex git libtool make patch \
   perl-IPC-Cmd pkgconf-pkg-config tar unzip wget which xz zip \
   "cuda-compiler-${CUDA_PACKAGE_SUFFIX}" \
-  "cuda-libraries-dev-${CUDA_PACKAGE_SUFFIX}" \
+  "cuda-libraries-devel-${CUDA_PACKAGE_SUFFIX}" \
   "cuda-nvtx-${CUDA_PACKAGE_SUFFIX}"
 dnf clean all
 

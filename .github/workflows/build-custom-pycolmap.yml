@@ -94,7 +94,7 @@ jobs:
             --volume "$GITHUB_WORKSPACE:/workspace" \
             --workdir /workspace \
             "$image" \
-            bash scripts_linux/build_custom_manylinux_wheel.sh
+            bash .github/scripts/build_custom_manylinux_wheel.sh
 
       - name: List validated outputs
         run: |
