@@ -254,12 +254,12 @@ COLMAP_CONFIG="$COLMAP_INSTALL/share/colmap/colmap-config.cmake"
 grep -Eq '^set\(DOWNLOAD_ENABLED (ON|TRUE|1)\)$' "$COLMAP_CONFIG" || \
   die "COLMAP silently disabled DOWNLOAD_ENABLED"
 if [[ "$WITH_CUDSS" == true ]]; then
-  LDD_REPORT="$(mktemp)"
-  find "$COLMAP_INSTALL" -type f -name '*.so*' -exec ldd {} \; \
-    >"$LDD_REPORT" 2>/dev/null || true
-  grep libcudss "$LDD_REPORT" >/dev/null || \
-    die "The COLMAP installation is not linked to cuDSS"
-  rm -f "$LDD_REPORT"
+  CERES_CONFIG="$(find "$CERES_INSTALL" -type f -name CeresConfig.cmake -print -quit)"
+  [[ -f "$CERES_CONFIG" ]] || die "The installed Ceres CMake package is missing"
+  grep -Eq '^set\(CERES_COMPILED_COMPONENTS ".*cuDSS' "$CERES_CONFIG" || \
+    die "Ceres was not compiled with its cuDSS component"
+  grep -Eq '^find_dependency\(cudss([ )])' "$CERES_CONFIG" || \
+    die "The installed Ceres package does not export its cuDSS dependency"
 fi
 
 pushd third_party/colmap-for-pycolmap >/dev/null
