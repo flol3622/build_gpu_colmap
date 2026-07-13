@@ -213,6 +213,33 @@ gh workflow run build-colmap.yml
 gh workflow run build-pycolmap.yml
 ```
 
+### Custom manylinux pycolmap wheels
+
+Use the on-demand workflow when a CUDA/Python/platform combination is not in
+the release assets. Unlike relabeling a wheel, this compiles inside the selected
+PyPA manylinux container so its glibc baseline is real.
+
+```bash
+# Example: pycolmap 4.1.0, Python 3.12, CUDA 12.8, bundled CUDA + cuDSS,
+# compatible with glibc 2.34 and newer.
+gh workflow run build-custom-pycolmap.yml \
+  -f python_version=3.12 \
+  -f cuda_version=12.8 \
+  -f manylinux_tag=manylinux_2_34_x86_64 \
+  -f cudss=true \
+  -f bundle_cuda=true
+```
+
+The run validates the filename, wheel metadata, requested manylinux policy,
+bundled CUDA/cuDSS libraries, pycolmap import, and Caspar API before uploading
+the wheel and its `build_info.json` as a 14-day workflow artifact. Set the
+optional `release_tag` input to upload to an existing release instead.
+
+The `manylinux_2_34_x86_64` PyPA image is currently marked alpha and its base
+distribution uses x86-64-v2 system packages. Use `manylinux_2_28_x86_64` when
+you need compatibility with older glibc versions or pre-x86-64-v2 CPUs; that
+baseline is limited to CUDA 12.8 in this builder.
+
 ## Building from Source
 
 See [CLAUDE.md](.claude/CLAUDE.md) for detailed build instructions.

@@ -1,5 +1,7 @@
 # Build directories
 build/
+build-custom-wheel/
+custom-wheelhouse/
 out/
 cmake-build-*/
 .cmake/
