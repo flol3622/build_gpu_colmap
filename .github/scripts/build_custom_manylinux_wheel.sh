@@ -143,6 +143,9 @@ fi
 git config --global --add safe.directory /workspace
 git config --global --add safe.directory /workspace/third_party/colmap-for-pycolmap
 git config --global --add safe.directory /workspace/third_party/vcpkg
+if git -C third_party/vcpkg rev-parse --is-shallow-repository | grep -Fx true >/dev/null; then
+  git -C third_party/vcpkg fetch --unshallow
+fi
 
 PATCH_FILE=/workspace/patches/pycolmap-caspar-bindings.patch
 if git -C third_party/colmap-for-pycolmap apply --check "$PATCH_FILE"; then
