@@ -1,6 +1,27 @@
 name: Build Custom pycolmap Wheel
 
 on:
+  workflow_call:
+    inputs:
+      python_version:
+        required: true
+        type: string
+      cuda_version:
+        required: true
+        type: string
+      manylinux_tag:
+        required: true
+        type: string
+      cudss:
+        required: true
+        type: boolean
+      bundle_cuda:
+        required: true
+        type: boolean
+      release_tag:
+        required: false
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
       python_version:

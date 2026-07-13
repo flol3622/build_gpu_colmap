@@ -215,6 +215,7 @@ CMAKE_ARGS=(
   -DCUDA_TOOLKIT_ROOT_DIR="$CUDA_ROOT"
   -DCUDA_ENABLED=ON
   -DCASPAR_ENABLED=ON
+  -DDOWNLOAD_ENABLED=ON
   -DBUILD_COLMAP=OFF
   -DBUILD_COLMAP_FOR_PYCOLMAP=ON
   -DBUILD_CERES=ON
@@ -237,6 +238,10 @@ CMAKE_PREFIX_PATH="${COLMAP_INSTALL};${CERES_INSTALL};${PYBIND11_DIR}"
   die "COLMAP-for-pycolmap was not installed"
 grep -q caspar_lib_core "$COLMAP_INSTALL/share/colmap/colmap-targets.cmake" || \
   die "Caspar is missing from the installed COLMAP targets"
+COLMAP_CONFIG="$COLMAP_INSTALL/share/colmap/colmap-config.cmake"
+[[ -f "$COLMAP_CONFIG" ]] || die "The installed COLMAP CMake package is missing"
+grep -Eq '^set\(DOWNLOAD_ENABLED (ON|TRUE|1)\)$' "$COLMAP_CONFIG" || \
+  die "COLMAP silently disabled DOWNLOAD_ENABLED"
 if [[ "$WITH_CUDSS" == true ]]; then
   LDD_REPORT="$(mktemp)"
   find "$COLMAP_INSTALL" -type f -name '*.so*' -exec ldd {} \; \
@@ -338,6 +343,28 @@ options.backend = pycolmap.BundleAdjustmentBackend.CASPAR
 assert isinstance(options.caspar, pycolmap.CasparBundleAdjustmentOptions)
 print(f"Smoke test passed for pycolmap {pycolmap.__version__}")
 PY
+
+ALIKED_TEST_HOME="$(mktemp -d)"
+HOME="$ALIKED_TEST_HOME" python .github/scripts/validate_aliked_download.py
+rm -rf "$ALIKED_TEST_HOME"
+
+# A wheel that genuinely satisfies the 2.34 baseline is also valid with the
+# stricter 2.35 tag. Emit both distribution filenames while keeping the wheel
+# metadata and RECORD correct; `wheel tags` performs the metadata rewrite.
+if [[ "$MANYLINUX_TAG" == manylinux_2_34_x86_64 ]]; then
+  python -m wheel tags \
+    --platform-tag manylinux_2_35_x86_64 \
+    "$REPAIRED_WHEEL"
+  COMPATIBLE_NAME="pycolmap-${WHEEL_VERSION}-cp${PYTHON_TAG}-cp${PYTHON_TAG}-manylinux_2_35_x86_64.whl"
+  COMPATIBLE_WHEEL="$WHEELHOUSE/$COMPATIBLE_NAME"
+  [[ -f "$COMPATIBLE_WHEEL" ]] || die "The manylinux_2_35 wheel was not emitted"
+  unzip -p "$COMPATIBLE_WHEEL" '*dist-info/METADATA' | \
+    grep -Fx "Version: $WHEEL_VERSION" >/dev/null || \
+    die "The manylinux_2_35 wheel METADATA has the wrong version"
+  unzip -p "$COMPATIBLE_WHEEL" '*dist-info/WHEEL' | \
+    grep -Fx "Tag: cp${PYTHON_TAG}-cp${PYTHON_TAG}-manylinux_2_35_x86_64" >/dev/null || \
+    die "The manylinux_2_35 wheel has the wrong internal platform tag"
+fi
 
 ACTUAL_CUDA_VERSION="$(nvcc --version | sed -n 's/.*release \([0-9.]*\).*/\1/p' | head -n 1)"
 BUILD_INFO="$WHEELHOUSE/${EXPECTED_NAME%.whl}.build_info.json"

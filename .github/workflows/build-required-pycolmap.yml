@@ -1,0 +1,31 @@
+name: Build Required pycolmap Wheel Subset
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Optional existing release tag to receive all three wheels
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  linux-wheels:
+    uses: ./.github/workflows/build-custom-pycolmap.yml
+    with:
+      python_version: '3.12'
+      cuda_version: '12.8'
+      manylinux_tag: manylinux_2_34_x86_64
+      cudss: true
+      bundle_cuda: true
+      release_tag: ${{ inputs.release_tag }}
+    secrets: inherit
+
+  windows-wheel:
+    uses: ./.github/workflows/build-pycolmap.yml
+    with:
+      release_tag: ${{ inputs.release_tag }}
+    secrets: inherit

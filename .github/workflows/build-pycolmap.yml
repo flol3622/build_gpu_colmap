@@ -1,4 +1,4 @@
-name: Build pycolmap Wheels
+name: Build Required Windows pycolmap Wheel
 
 on:
   workflow_call:
@@ -26,15 +26,6 @@ on:
   pull_request:
     branches: [master, main]
   workflow_dispatch:
-    inputs:
-      cuda:
-        description: 'Build with CUDA'
-        type: boolean
-        default: true
-      python_version:
-        description: 'Python version (leave empty for all)'
-        type: string
-        default: ''
 
 jobs:
   build-wheels:
@@ -43,237 +34,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2022, ubuntu-22.04]
-        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
-        cuda: [true, false]
-        cudss: [false]  # Default: no cuDSS
-        bundle_cuda: [false]  # Default: don't bundle CUDA runtime libs
-        cuda_version: ['12.8.1']
         include:
-          # cuDSS variants (Windows only)
-          - os: windows-2022
-            python-version: '3.10'
-            cuda: true
-            cudss: true
-            bundle_cuda: false
-            cuda_version: '12.8.1'
-          - os: windows-2022
-            python-version: '3.11'
-            cuda: true
-            cudss: true
-            bundle_cuda: false
-            cuda_version: '12.8.1'
           - os: windows-2022
             python-version: '3.12'
             cuda: true
             cudss: true
             bundle_cuda: false
             cuda_version: '12.8.1'
-          - os: windows-2022
-            python-version: '3.13'
-            cuda: true
-            cudss: true
-            bundle_cuda: false
-            cuda_version: '12.8.1'
-          - os: windows-2022
-            python-version: '3.14'
-            cuda: true
-            cudss: true
-            bundle_cuda: false
-            cuda_version: '12.8.1'
-          # NOTE: Windows CUDA 13 removed - CUDA 13 changed DLL names (cusolver64_12 -> cusolver64_13)
-          # which breaks delvewheel. Needs upstream COLMAP fix to link against CUDA 13 DLLs.
-          # Linux CUDA 13 bundled wheels work fine (self-contained).
-          # Self-contained CUDA variants (Linux only) - bundle CUDA runtime libs
-          # so users don't need CUDA toolkit installed
-          - os: ubuntu-22.04
-            python-version: '3.10'
-            cuda: true
-            cudss: false
-            bundle_cuda: true
-            cuda_version: '12.8.1'
-          - os: ubuntu-22.04
-            python-version: '3.11'
-            cuda: true
-            cudss: false
-            bundle_cuda: true
-            cuda_version: '12.8.1'
-          - os: ubuntu-22.04
-            python-version: '3.12'
-            cuda: true
-            cudss: false
-            bundle_cuda: true
-            cuda_version: '12.8.1'
-          - os: ubuntu-22.04
-            python-version: '3.13'
-            cuda: true
-            cudss: false
-            bundle_cuda: true
-            cuda_version: '12.8.1'
-          - os: ubuntu-22.04
-            python-version: '3.14'
-            cuda: true
-            cudss: false
-            bundle_cuda: true
-            cuda_version: '12.8.1'
-          # CUDA 13.0 self-contained variants (Linux only, bundled)
-          # For PyTorch compatibility (torch often pins to .0 releases)
-          - os: ubuntu-22.04
-            python-version: '3.10'
-            cuda: true
-            cudss: false
-            bundle_cuda: true
-            cuda_version: '13.0.2'
-          - os: ubuntu-22.04
-            python-version: '3.11'
-            cuda: true
-            cudss: false
-            bundle_cuda: true
-            cuda_version: '13.0.2'
-          - os: ubuntu-22.04
-            python-version: '3.12'
-            cuda: true
-            cudss: false
-            bundle_cuda: true
-            cuda_version: '13.0.2'
-          - os: ubuntu-22.04
-            python-version: '3.13'
-            cuda: true
-            cudss: false
-            bundle_cuda: true
-            cuda_version: '13.0.2'
-          - os: ubuntu-22.04
-            python-version: '3.14'
-            cuda: true
-            cudss: false
-            bundle_cuda: true
-            cuda_version: '13.0.2'
-          # CUDA 13.1 self-contained variants (Linux only, bundled)
-          # Latest CUDA 13 + Blackwell arch 120
-          - os: ubuntu-22.04
-            python-version: '3.10'
-            cuda: true
-            cudss: false
-            bundle_cuda: true
-            cuda_version: '13.1.0'
-          - os: ubuntu-22.04
-            python-version: '3.11'
-            cuda: true
-            cudss: false
-            bundle_cuda: true
-            cuda_version: '13.1.0'
-          - os: ubuntu-22.04
-            python-version: '3.12'
-            cuda: true
-            cudss: false
-            bundle_cuda: true
-            cuda_version: '13.1.0'
-          - os: ubuntu-22.04
-            python-version: '3.13'
-            cuda: true
-            cudss: false
-            bundle_cuda: true
-            cuda_version: '13.1.0'
-          - os: ubuntu-22.04
-            python-version: '3.14'
-            cuda: true
-            cudss: false
-            bundle_cuda: true
-            cuda_version: '13.1.0'
-          # Self-contained CUDA + cuDSS variants (Linux only, bundled)
-          # CUDA 12.8 + cuDSS
-          - os: ubuntu-22.04
-            python-version: '3.10'
-            cuda: true
-            cudss: true
-            bundle_cuda: true
-            cuda_version: '12.8.1'
-          - os: ubuntu-22.04
-            python-version: '3.11'
-            cuda: true
-            cudss: true
-            bundle_cuda: true
-            cuda_version: '12.8.1'
-          - os: ubuntu-22.04
-            python-version: '3.12'
-            cuda: true
-            cudss: true
-            bundle_cuda: true
-            cuda_version: '12.8.1'
-          - os: ubuntu-22.04
-            python-version: '3.13'
-            cuda: true
-            cudss: true
-            bundle_cuda: true
-            cuda_version: '12.8.1'
-          - os: ubuntu-22.04
-            python-version: '3.14'
-            cuda: true
-            cudss: true
-            bundle_cuda: true
-            cuda_version: '12.8.1'
-          # CUDA 13.0 + cuDSS
-          - os: ubuntu-22.04
-            python-version: '3.10'
-            cuda: true
-            cudss: true
-            bundle_cuda: true
-            cuda_version: '13.0.2'
-          - os: ubuntu-22.04
-            python-version: '3.11'
-            cuda: true
-            cudss: true
-            bundle_cuda: true
-            cuda_version: '13.0.2'
-          - os: ubuntu-22.04
-            python-version: '3.12'
-            cuda: true
-            cudss: true
-            bundle_cuda: true
-            cuda_version: '13.0.2'
-          - os: ubuntu-22.04
-            python-version: '3.13'
-            cuda: true
-            cudss: true
-            bundle_cuda: true
-            cuda_version: '13.0.2'
-          - os: ubuntu-22.04
-            python-version: '3.14'
-            cuda: true
-            cudss: true
-            bundle_cuda: true
-            cuda_version: '13.0.2'
-          # CUDA 13.1 + cuDSS
-          - os: ubuntu-22.04
-            python-version: '3.10'
-            cuda: true
-            cudss: true
-            bundle_cuda: true
-            cuda_version: '13.1.0'
-          - os: ubuntu-22.04
-            python-version: '3.11'
-            cuda: true
-            cudss: true
-            bundle_cuda: true
-            cuda_version: '13.1.0'
-          - os: ubuntu-22.04
-            python-version: '3.12'
-            cuda: true
-            cudss: true
-            bundle_cuda: true
-            cuda_version: '13.1.0'
-          - os: ubuntu-22.04
-            python-version: '3.13'
-            cuda: true
-            cudss: true
-            bundle_cuda: true
-            cuda_version: '13.1.0'
-          - os: ubuntu-22.04
-            python-version: '3.14'
-            cuda: true
-            cudss: true
-            bundle_cuda: true
-            cuda_version: '13.1.0'
 
     steps:
       - name: Checkout repository
@@ -484,6 +251,7 @@ jobs:
               "-DCMAKE_BUILD_TYPE=Release",
               "-DCUDA_ENABLED=$cudaFlag",
               "-DCASPAR_ENABLED=$casparFlag",
+              "-DDOWNLOAD_ENABLED=ON",
               "-DBUILD_COLMAP=OFF",
               "-DBUILD_COLMAP_FOR_PYCOLMAP=ON"
             )
@@ -523,6 +291,16 @@ jobs:
 
             # Build
             cmake --build . --config Release --parallel
+
+            $colmapConfig = "${{ github.workspace }}/build/install/colmap-for-pycolmap/share/colmap/colmap-config.cmake"
+            if (-not (Test-Path $colmapConfig)) {
+              Write-Host "ERROR: Installed COLMAP CMake package is missing" -ForegroundColor Red
+              exit 1
+            }
+            if (-not (Select-String -Path $colmapConfig -Pattern '^set\(DOWNLOAD_ENABLED (ON|TRUE|1)\)$' -Quiet)) {
+              Write-Host "ERROR: COLMAP silently disabled DOWNLOAD_ENABLED" -ForegroundColor Red
+              exit 1
+            }
 
       - name: Build COLMAP-for-pycolmap (Linux)
         if: runner.os == 'Linux'
@@ -625,6 +403,28 @@ jobs:
           echo "Caspar export for pycolmap COLMAP verified"
 
       # ==================== Build Python Wheel ====================
+      - name: Stamp wheel metadata version
+        shell: bash
+        working-directory: third_party/colmap-for-pycolmap
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("pyproject.toml")
+          text = path.read_text()
+          updated, count = re.subn(
+              r'^version = "[^"]+"',
+              'version = "4.1.0+cuda.cudss"',
+              text,
+              count=1,
+              flags=re.MULTILINE,
+          )
+          if count != 1:
+              raise SystemExit("Could not stamp the custom pycolmap version")
+          path.write_text(updated)
+          PY
+
       - name: Build wheel (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -977,6 +777,12 @@ jobs:
           print("pycolmap Caspar API smoke test passed")
           '@ | python -
 
+          $alikedHome = Join-Path $env:RUNNER_TEMP "pycolmap-aliked-download-test"
+          Remove-Item -Recurse -Force $alikedHome -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $alikedHome | Out-Null
+          $env:USERPROFILE = $alikedHome
+          python "$env:GITHUB_WORKSPACE/.github/scripts/validate_aliked_download.py"
+
           if ($LASTEXITCODE -ne 0) {
             Write-Host "ERROR: pycolmap import failed" -ForegroundColor Red
             exit 1
@@ -1023,48 +829,27 @@ jobs:
           echo "pycolmap smoke test passed"
 
       # ==================== Artifacts ====================
-      - name: Rename wheels with variant suffix
-        shell: bash
+      - name: Validate exact wheel filename and metadata
+        shell: pwsh
         working-directory: third_party/colmap-for-pycolmap
         run: |
-          # Determine variant suffix for wheel filename
-          CUDA_MAJOR=$(echo "${{ matrix.cuda_version }}" | cut -d. -f1)
-          CUDA_MINOR=$(echo "${{ matrix.cuda_version }}" | cut -d. -f2)
-          if [ "${{ matrix.bundle_cuda }}" = "true" ] && [ "${{ matrix.cudss }}" = "true" ]; then
-            VARIANT="+cu${CUDA_MAJOR}${CUDA_MINOR}.bundled.cudss"
-          elif [ "${{ matrix.bundle_cuda }}" = "true" ]; then
-            VARIANT="+cu${CUDA_MAJOR}${CUDA_MINOR}.bundled"
-          elif [ "${{ matrix.cudss }}" = "true" ]; then
-            VARIANT="+cuda.cudss"
-          elif [ "${{ matrix.cuda }}" = "true" ] && [ "$CUDA_MAJOR" != "12" ]; then
-            VARIANT="+cu${CUDA_MAJOR}${CUDA_MINOR}"
-          elif [ "${{ matrix.cuda }}" = "true" ]; then
-            VARIANT="+cuda"
-          else
-            VARIANT="+cpu"
-          fi
+          $expected = "pycolmap-4.1.0+cuda.cudss-cp312-cp312-win_amd64.whl"
+          $wheels = @(Get-ChildItem -Path wheelhouse -Filter "*.whl")
+          if ($wheels.Count -ne 1 -or $wheels[0].Name -ne $expected) {
+            Write-Host "ERROR: Expected only $expected; found $($wheels.Name -join ', ')" -ForegroundColor Red
+            exit 1
+          }
+          @'
+          from pathlib import Path
+          from zipfile import ZipFile
 
-          echo "Renaming wheels with variant: $VARIANT"
-
-          # Rename each wheel to include variant in version
-          # e.g., pycolmap-4.1.0-cp310-cp310-win_amd64.whl
-          #    -> pycolmap-4.1.0+cuda-cp310-cp310-win_amd64.whl
-          for wheel in wheelhouse/*.whl; do
-            if [ -f "$wheel" ]; then
-              filename=$(basename "$wheel")
-              # Extract parts: name-version-pytag-abitag-platform.whl
-              # Insert variant after version (before first -cp)
-              # Matches both release versions and dev versions.
-              newname=$(echo "$filename" | sed "s/\(pycolmap-[0-9][^-]*\)\(-cp\)/\1${VARIANT}\2/")
-              if [ "$filename" != "$newname" ]; then
-                echo "  $filename -> $newname"
-                mv "$wheel" "wheelhouse/$newname"
-              fi
-            fi
-          done
-
-          echo "Renamed wheels:"
-          ls -la wheelhouse/*.whl || echo "No wheels found"
+          wheel = Path("wheelhouse/pycolmap-4.1.0+cuda.cudss-cp312-cp312-win_amd64.whl")
+          with ZipFile(wheel) as archive:
+              metadata_name = next(n for n in archive.namelist() if n.endswith(".dist-info/METADATA"))
+              metadata = archive.read(metadata_name).decode()
+          assert "\nVersion: 4.1.0+cuda.cudss\n" in f"\n{metadata}"
+          print(f"Validated {wheel.name} and its METADATA version")
+          '@ | python -
 
       - name: Prepare artifact name
         id: artifact-name

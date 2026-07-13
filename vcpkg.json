@@ -13,6 +13,17 @@
                          "openimageio",
                          "glog",
                          "gflags",
+                         {
+                             "name": "curl",
+                             "features": ["sspi"],
+                             "platform": "windows"
+                         },
+                         {
+                             "name": "curl",
+                             "features": ["openssl"],
+                             "platform": "!windows"
+                         },
+                         "openssl",
                          "sqlite3",
                          "glew",
                          "cgal",

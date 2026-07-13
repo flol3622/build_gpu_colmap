@@ -38,6 +38,7 @@ if(CUDA_ENABLED)
 endif()
 option(CASPAR_ENABLED "Enable COLMAP Caspar-accelerated bundle adjustment" ${DEFAULT_CASPAR_ENABLED})
 option(CASPAR_USE_DOUBLE "Build Caspar with double precision kernels" OFF)
+option(DOWNLOAD_ENABLED "Enable COLMAP automatic resource downloads" ON)
 
 if(CASPAR_ENABLED AND NOT CUDA_ENABLED)
     message(FATAL_ERROR "CASPAR_ENABLED requires CUDA_ENABLED=ON")
@@ -447,6 +448,7 @@ if(BUILD_COLMAP)
             -DCMAKE_CUDA_RUNTIME_LIBRARY=Shared
             -DCMAKE_CUDA_FLAGS=${CUDA13_THRUST_FLAGS}
             -DGUI_ENABLED=${GUI_ENABLED}
+            -DDOWNLOAD_ENABLED=${DOWNLOAD_ENABLED}
             -DTESTS_ENABLED=OFF
             -DX_VCPKG_APPLOCAL_DEPS_INSTALL=ON
             ${COLMAP_CASPAR_ARGS}
@@ -531,6 +533,7 @@ if(BUILD_COLMAP_FOR_PYCOLMAP)
             -DCMAKE_CUDA_RUNTIME_LIBRARY=Shared
             -DCMAKE_CUDA_FLAGS=${CUDA13_THRUST_FLAGS}
             -DGUI_ENABLED=${GUI_ENABLED}
+            -DDOWNLOAD_ENABLED=${DOWNLOAD_ENABLED}
             -DTESTS_ENABLED=OFF
             -DCGAL_ENABLED=ON
             -DOPENGL_ENABLED=OFF

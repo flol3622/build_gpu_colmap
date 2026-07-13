@@ -213,7 +213,34 @@ gh workflow run build-colmap.yml
 gh workflow run build-pycolmap.yml
 ```
 
-### Custom manylinux pycolmap wheels
+### Required custom pycolmap wheel subset
+
+This fork has a focused workflow for the three CPython 3.12 artifacts:
+
+```text
+pycolmap-4.1.0+cu128.bundled.cudss-cp312-cp312-manylinux_2_34_x86_64.whl
+pycolmap-4.1.0+cu128.bundled.cudss-cp312-cp312-manylinux_2_35_x86_64.whl
+pycolmap-4.1.0+cuda.cudss-cp312-cp312-win_amd64.whl
+```
+
+Build all three in parallel from the Actions UI or with:
+
+```bash
+gh workflow run build-required-pycolmap.yml
+```
+
+The Linux job compiles in the genuine glibc 2.34 PyPA container. Since that
+binary also satisfies the stricter 2.35 policy, `wheel tags` emits a second
+wheel whose filename, internal WHEEL tag, METADATA, and RECORD are rewritten
+consistently. The Windows job is restricted to CUDA 12.8 + cuDSS + Python 3.12.
+
+Both jobs explicitly configure `DOWNLOAD_ENABLED=ON`, fail if COLMAP silently
+turns it off, and use a fresh home directory to instantiate the CPU ALIKED
+extractor without assigning a model path. That smoke test must download,
+checksum, cache, and open the default `aliked-n16rot.onnx` model before any
+wheel is uploaded.
+
+### General custom manylinux pycolmap wheels
 
 Use the on-demand workflow when a CUDA/Python/platform combination is not in
 the release assets. Unlike relabeling a wheel, this compiles inside the selected
@@ -231,9 +258,10 @@ gh workflow run build-custom-pycolmap.yml \
 ```
 
 The run validates the filename, wheel metadata, requested manylinux policy,
-bundled CUDA/cuDSS libraries, pycolmap import, and Caspar API before uploading
-the wheel and its `build_info.json` as a 14-day workflow artifact. Set the
-optional `release_tag` input to upload to an existing release instead.
+bundled CUDA/cuDSS libraries, pycolmap import, Caspar API, and ALIKED default
+model download before uploading the wheels and `build_info.json` as a 14-day
+workflow artifact. Set the optional `release_tag` input to upload to an
+existing release instead.
 
 The `manylinux_2_34_x86_64` PyPA image is currently marked alpha and its base
 distribution uses x86-64-v2 system packages. Use `manylinux_2_28_x86_64` when
