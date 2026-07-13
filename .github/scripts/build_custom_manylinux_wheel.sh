@@ -18,6 +18,17 @@ die() {
   exit 1
 }
 
+dump_recent_vcpkg_errors() {
+  local status=$?
+  if [[ $status -ne 0 && -d /workspace/third_party/vcpkg/buildtrees ]]; then
+    echo "Recent vcpkg error logs:" >&2
+    find /workspace/third_party/vcpkg/buildtrees \
+      -type f -name '*err.log' -mmin -15 -print -exec tail -n 200 {} \; >&2 || true
+  fi
+  exit "$status"
+}
+trap dump_recent_vcpkg_errors ERR
+
 as_bool() {
   case "${1,,}" in
     1|true|yes|on) echo true ;;
@@ -88,7 +99,7 @@ dnf config-manager --add-repo \
 dnf clean all
 dnf install -y \
   autoconf automake bison curl flex git libtool make patch \
-  kernel-headers perl-IPC-Cmd pkgconf-pkg-config tar unzip wget which xz zip \
+  kernel-headers perl-core perl-IPC-Cmd pkgconf-pkg-config tar unzip wget which xz zip \
   "cuda-compiler-${CUDA_PACKAGE_SUFFIX}" \
   "cuda-libraries-devel-${CUDA_PACKAGE_SUFFIX}" \
   "cuda-nvtx-${CUDA_PACKAGE_SUFFIX}"

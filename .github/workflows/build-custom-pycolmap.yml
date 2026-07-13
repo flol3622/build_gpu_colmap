@@ -101,6 +101,8 @@ jobs:
         with:
           path: .cache/vcpkg
           key: vcpkg-${{ inputs.cuda_version }}-${{ inputs.manylinux_tag }}-${{ hashFiles('vcpkg.json', 'overlay-ports/**', 'patches/**') }}
+          restore-keys: |
+            vcpkg-${{ inputs.cuda_version }}-${{ inputs.manylinux_tag }}-
 
       - name: Build in the selected PyPA manylinux container
         env:
