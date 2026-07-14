@@ -7,24 +7,6 @@ on:
         description: 'Release tag to upload assets to (empty = no upload)'
         type: string
         default: ''
-  push:
-    branches: [master, main]
-    paths:
-      - 'CMakeLists.txt'
-      - 'cmake/**'
-      - 'vcpkg.json'
-      - 'third_party/colmap-for-pycolmap'
-      - 'third_party/colmap-for-pycolmap/**'
-      - 'third_party/ceres-solver'
-      - 'third_party/ceres-solver/**'
-      - 'third_party/vcpkg'
-      - 'scripts_windows/**'
-      - 'scripts_linux/**'
-      - 'scripts/**'
-      - 'patches/**'
-      - '.github/workflows/build-pycolmap.yml'
-  pull_request:
-    branches: [master, main]
   workflow_dispatch:
 
 jobs:
