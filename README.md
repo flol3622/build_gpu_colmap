@@ -126,8 +126,8 @@ Nothing gets uploaded until it passes every applicable check:
 - Linux wheels pass `auditwheel`; Windows wheels are repaired with `delvewheel`.
 - The linked CUDA runtime and cuDSS shared libraries are physically in the wheel.
 - Linux wheels contain both ONNX Runtime provider libraries; bundled variants
-  also contain cuFFT and the cuDNN JIT runtime, and CI proves the providers can
-  be loaded without relying on host user-space CUDA libraries.
+  also contain cuFFT and the cuDNN JIT runtime, and CI resolves the providers'
+  complete linked dependency graph without host user-space CUDA libraries.
 - The repaired wheel installs and imports in a clean environment.
 - From an empty home/cache and without assigning a model path, constructing an
   `ALIKED_N16ROT` extractor downloads, verifies, caches, and opens the default

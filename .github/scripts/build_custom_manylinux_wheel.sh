@@ -422,9 +422,9 @@ fi
 auditwheel show "$REPAIRED_WHEEL"
 python -m pip install --force-reinstall "$REPAIRED_WHEEL"
 python - <<'PY'
-import ctypes
 import importlib.metadata
 import os
+import subprocess
 from pathlib import Path
 
 import pycolmap
@@ -443,7 +443,15 @@ for name in (
 ):
     provider = libs_dir / name
     assert provider.is_file(), f"missing ONNX Runtime provider: {provider}"
-    ctypes.CDLL(str(provider), mode=os.RTLD_GLOBAL)
+    # Do not dlopen the CUDA provider on GitHub's driverless runner: its static
+    # initializers enter CUDA and can segfault without a display driver. ldd
+    # resolves the complete DT_NEEDED graph without running those initializers.
+    result = subprocess.run(
+        ["ldd", str(provider)], capture_output=True, text=True, check=False
+    )
+    dependencies = result.stdout + result.stderr
+    assert result.returncode == 0, dependencies
+    assert "not found" not in dependencies, dependencies
 
 print(f"Smoke test passed for pycolmap {pycolmap.__version__}")
 PY
