@@ -1,15 +1,15 @@
 # GPU pycolmap wheel builder
 
-This is a single-purpose fork of
-[`lyehe/build_gpu_colmap`](https://github.com/lyehe/build_gpu_colmap): it builds,
-repairs, validates, and publishes self-contained GPU-enabled **pycolmap wheels**
-for modern Linux, Red Hat-compatible Linux, and Windows.
+GPU-enabled `pycolmap` wheels, built, repaired, validated, and published for
+you. This is a single-purpose fork of
+[`lyehe/build_gpu_colmap`](https://github.com/lyehe/build_gpu_colmap) that
+targets modern Linux, Red Hat-compatible Linux, and Windows.
 
-The fork is intentionally not a general COLMAP distribution. It does not try to
-maintain a CPU-wheel matrix, standalone COLMAP archives, GUI packages, or every
-upstream build variant. Its job is to make missing/custom pycolmap GPU wheels
-reproducibly, with the linked CUDA user-space libraries and cuDSS included.
-Only the NVIDIA display driver remains a system dependency.
+It's not a general COLMAP distribution — no CPU-wheel matrix, no standalone
+COLMAP archives, no GUI packages, no every-upstream-variant coverage. Just one
+job, done well: reproducible GPU pycolmap wheels with CUDA and cuDSS already
+bundled in. The only thing you still need on the host is an NVIDIA display
+driver.
 
 ## Current wheel set
 
@@ -22,15 +22,14 @@ The current release is
 | Linux x86_64 | `pycolmap-4.1.0+cu128.bundled.cudss-cp312-cp312-manylinux_2_35_x86_64.whl` | glibc 2.35-tagged companion for newer distributions |
 | Windows AMD64 | `pycolmap-4.1.0+cuda.cudss-cp312-cp312-win_amd64.whl` | Windows 10/11 or Server 2022 |
 
-These wheels target CPython 3.12 and include CUDA 12.8 runtime dependencies,
-cuDSS 0.7.1.4, and the Caspar bundle-adjustment backend. The manylinux_2_34
-wheel is the broadest Linux choice: a binary that satisfies glibc 2.34 also
-runs on glibc 2.35 and newer. The second file exists for consumers that require
-an exact manylinux_2_35 tag; its internal `WHEEL` tag and `RECORD` are rewritten
-consistently.
+These wheels target CPython 3.12 and bundle CUDA 12.8 runtime dependencies,
+cuDSS 0.7.1.4, and the Caspar bundle-adjustment backend. If you're not sure
+which Linux wheel to grab, pick `manylinux_2_34`: it satisfies glibc 2.34 and
+runs fine on glibc 2.35 and newer too. The second file is only there for
+consumers who specifically need the exact `manylinux_2_35` tag.
 
-For AlmaLinux/RHEL 8-class systems, build a `manylinux_2_28_x86_64` wheel with
-the custom Linux workflow described below.
+Need AlmaLinux/RHEL 8 support instead? Build a `manylinux_2_28_x86_64` wheel
+yourself with the custom Linux workflow described below.
 
 ## Install a released wheel
 
@@ -46,15 +45,15 @@ python -m pip install /path/to/pycolmap-4.1.0+cu128.bundled.cudss-cp312-cp312-ma
 python -m pip install C:\path\to\pycolmap-4.1.0+cuda.cudss-cp312-cp312-win_amd64.whl
 ```
 
-The wheel bundles user-space GPU libraries, not the kernel/display driver. The
-host still needs an NVIDIA driver compatible with CUDA 12.8.
+The wheel bundles user-space GPU libraries, not the kernel/display driver — you
+still need an NVIDIA driver compatible with CUDA 12.8 on the host.
 
 ## Use the wheels in a uv project
 
-A complete consumer template is available at
-[`examples/uv/pyproject.toml`](examples/uv/pyproject.toml). The important part
-is an ordinary `pycolmap` dependency plus uv-only, platform-specific direct
-wheel sources:
+Want a working example? See
+[`examples/uv/pyproject.toml`](examples/uv/pyproject.toml). It's just an
+ordinary `pycolmap` dependency plus uv-only, platform-specific direct wheel
+sources:
 
 ```toml
 [project]
@@ -88,14 +87,15 @@ uv run python -c "import pycolmap; print(pycolmap.__version__)"
 ```
 
 `tool.uv.sources` is project-local uv configuration; other package managers
-ignore it. The template intentionally selects the `manylinux_2_34` wheel because
-it also runs on glibc 2.35 and newer. Point the Linux URL at a custom 2.28 build
-when targeting AlmaLinux/RHEL 8. See uv's documentation for
-[platform-specific and multiple dependency sources](https://docs.astral.sh/uv/concepts/projects/dependencies/#multiple-sources).
+ignore it. The template picks the `manylinux_2_34` wheel since it also runs on
+glibc 2.35 and newer — swap in a custom 2.28 build if you're targeting
+AlmaLinux/RHEL 8. See uv's docs on
+[platform-specific and multiple dependency sources](https://docs.astral.sh/uv/concepts/projects/dependencies/#multiple-sources)
+for more.
 
 ## What every wheel must prove
 
-A build is uploaded only after all applicable checks pass:
+Nothing gets uploaded until it passes every applicable check:
 
 - CUDA is enabled in the native COLMAP build.
 - Ceres detects and exports its cuDSS component.
@@ -109,14 +109,14 @@ A build is uploaded only after all applicable checks pass:
   `ALIKED_N16ROT` extractor downloads, verifies, caches, and opens the default
   `aliked-n16rot.onnx` model.
 
-The ALIKED gate is implemented in
+The ALIKED gate lives in
 [`validate_aliked_download.py`](.github/scripts/validate_aliked_download.py).
-It prevents a wheel from passing merely because the build accepted
-`-DDOWNLOAD_ENABLED=ON`; runtime downloading must actually work.
+It makes sure runtime downloading actually works, not just that
+`-DDOWNLOAD_ENABLED=ON` was accepted at build time.
 
 ## GitHub Actions for this fork
 
-There are three pycolmap entry points:
+Three workflows, three jobs:
 
 | Workflow | Purpose | Output |
 | --- | --- | --- |
@@ -155,8 +155,8 @@ gh release edit "$TAG" --draft=false
 
 ### Build a custom Linux wheel
 
-The Linux workflow always compiles inside the selected PyPA container; it does
-not build on Ubuntu and relabel the result afterward.
+The Linux workflow always compiles inside the selected PyPA container — no
+building on Ubuntu and relabeling the result afterward.
 
 ```bash
 gh workflow run build-custom-pycolmap.yml \
@@ -190,9 +190,9 @@ Run **Build Required Windows pycolmap Wheel** or:
 gh workflow run build-pycolmap.yml
 ```
 
-The Windows workflow is deliberately fixed to Windows Server 2022, CPython
-3.12, CUDA 12.8.1, cuDSS 0.7.1.4, and Caspar. Change its single matrix entry
-only when adding a deliberately supported Windows variant.
+The Windows workflow sticks to one known-good combo: Windows Server 2022,
+CPython 3.12, CUDA 12.8.1, cuDSS 0.7.1.4, and Caspar. Only touch its single
+matrix entry when you're deliberately adding a new supported Windows variant.
 
 ### Retry a failed build
 
@@ -241,10 +241,10 @@ git diff --check
 ```
 
 The full build belongs in GitHub Actions: it needs CUDA installers, several
-gigabytes of dependencies and wheel repair work, and approximately an hour per
+gigabytes of dependencies, and wheel repair work — roughly an hour per
 uncached platform.
 
-When adding a variant, update all of the following together:
+Adding a new variant? Keep these in sync:
 
 1. Workflow choices or the Windows matrix.
 2. Version suffix and exact expected filename.
