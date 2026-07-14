@@ -15,6 +15,6 @@ required-environments = [
 
 [tool.uv.sources]
 pycolmap = [
-  { url = "https://github.com/flol3622/build_gpu_colmap/releases/download/pycolmap-4.1.0-cu128-cudss/pycolmap-4.1.0%2Bcu128.bundled.cudss-cp312-cp312-manylinux_2_34_x86_64.whl", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
-  { url = "https://github.com/flol3622/build_gpu_colmap/releases/download/pycolmap-4.1.0-cu128-cudss/pycolmap-4.1.0%2Bcuda.cudss-cp312-cp312-win_amd64.whl", marker = "sys_platform == 'win32' and platform_machine == 'AMD64'" },
+  { url = "https://github.com/flol3622/build_gpu_colmap/releases/download/pycolmap-4.1.0-cu128-cudss-r2/pycolmap-4.1.0%2Bcu128.bundled.cudss-cp312-cp312-manylinux_2_34_x86_64.whl", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
+  { url = "https://github.com/flol3622/build_gpu_colmap/releases/download/pycolmap-4.1.0-cu128-cudss-r2/pycolmap-4.1.0%2Bcuda.cudss-cp312-cp312-win_amd64.whl", marker = "sys_platform == 'win32' and platform_machine == 'AMD64'" },
 ]

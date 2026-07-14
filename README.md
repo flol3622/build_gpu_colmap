@@ -14,7 +14,7 @@ driver.
 ## Current wheel set
 
 The current release is
-[`pycolmap-4.1.0-cu128-cudss`](https://github.com/flol3622/build_gpu_colmap/releases/tag/pycolmap-4.1.0-cu128-cudss):
+[`pycolmap-4.1.0-cu128-cudss-r2`](https://github.com/flol3622/build_gpu_colmap/releases/tag/pycolmap-4.1.0-cu128-cudss-r2):
 
 | Platform | Wheel | Baseline |
 | --- | --- | --- |
@@ -43,7 +43,7 @@ uv run python -c "import pycolmap; print(pycolmap.__version__)"
 The repository's packaging backend selects the matching released wheel,
 verifies its pinned SHA-256 digest, and gives it to uv. It does not compile
 COLMAP locally. The current Git install supports CPython 3.12 on Linux x86_64
-(glibc 2.34 or newer) and Windows x86_64. The wheel is about 1.2–1.3 GiB, so
+(glibc 2.34 or newer) and Windows x86_64. The wheel is about 1.1–1.7 GiB, so
 the first resolution can take a while.
 
 To make an environment reproducible, append the packaging commit SHA:
@@ -94,8 +94,8 @@ required-environments = [
 
 [tool.uv.sources]
 pycolmap = [
-  { url = "https://github.com/flol3622/build_gpu_colmap/releases/download/pycolmap-4.1.0-cu128-cudss/pycolmap-4.1.0%2Bcu128.bundled.cudss-cp312-cp312-manylinux_2_34_x86_64.whl", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
-  { url = "https://github.com/flol3622/build_gpu_colmap/releases/download/pycolmap-4.1.0-cu128-cudss/pycolmap-4.1.0%2Bcuda.cudss-cp312-cp312-win_amd64.whl", marker = "sys_platform == 'win32' and platform_machine == 'AMD64'" },
+  { url = "https://github.com/flol3622/build_gpu_colmap/releases/download/pycolmap-4.1.0-cu128-cudss-r2/pycolmap-4.1.0%2Bcu128.bundled.cudss-cp312-cp312-manylinux_2_34_x86_64.whl", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
+  { url = "https://github.com/flol3622/build_gpu_colmap/releases/download/pycolmap-4.1.0-cu128-cudss-r2/pycolmap-4.1.0%2Bcuda.cudss-cp312-cp312-win_amd64.whl", marker = "sys_platform == 'win32' and platform_machine == 'AMD64'" },
 ]
 ```
 
@@ -164,7 +164,7 @@ To upload directly to a release, create the release first and pass its existing
 tag:
 
 ```bash
-TAG=pycolmap-4.1.0-cu128-cudss
+TAG=pycolmap-4.1.0-cu128-cudss-r2
 gh release create "$TAG" --draft --title "pycolmap 4.1.0 CUDA 12.8 + cuDSS wheels"
 gh workflow run build-required-pycolmap.yml -f release_tag="$TAG"
 ```

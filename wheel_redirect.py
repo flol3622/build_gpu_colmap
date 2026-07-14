@@ -24,7 +24,7 @@ from typing import Mapping
 
 _RELEASE_BASE = (
     "https://github.com/flol3622/build_gpu_colmap/releases/download/"
-    "pycolmap-4.1.0-cu128-cudss"
+    "pycolmap-4.1.0-cu128-cudss-r2"
 )
 _DOWNLOAD_CHUNK_SIZE = 8 * 1024 * 1024
 _PROGRESS_INTERVAL = 128 * 1024 * 1024
@@ -49,8 +49,8 @@ _ASSETS: Mapping[str, WheelAsset] = {
         filename=(
             "pycolmap-4.1.0+cu128.bundled.cudss-cp312-cp312-manylinux_2_34_x86_64.whl"
         ),
-        sha256="fa95d49a315d49ab8355ee6e1f027a37954fce50f18852e9e8fa35f718293b26",
-        size=1_339_073_090,
+        sha256="07a8455d8341f76fdfdd42b8d9f823540ac8c35ff106759df4cc71abd384d3e0",
+        size=1_741_093_810,
         metadata_sha256="98923fbea56806c1bc5b37e72d311db3a0fab637bc19bea9b42d45709d83fc91",
         wheel_metadata_sha256=(
             "7d1aaac129bf355bf7cfb7b0539edb6abd3622543e66153b1f3492ba114d62f4"
@@ -58,7 +58,7 @@ _ASSETS: Mapping[str, WheelAsset] = {
     ),
     "windows": WheelAsset(
         filename="pycolmap-4.1.0+cuda.cudss-cp312-cp312-win_amd64.whl",
-        sha256="b695fe455e515cde067f586bcc123eec98dd7bf087a3c0590b9d5570cf07ce19",
+        sha256="06bc05bcad385b404a342a0b69c7eb45f06c1bf69decccc3e7879fa4f8e3b422",
         size=1_211_659_668,
         metadata_sha256="e5bc62d4c5fcd8cf7ec46d84bb51e050ae972ad40aa917ac349aa1381f0208f0",
         wheel_metadata_sha256=(
