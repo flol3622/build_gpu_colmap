@@ -10,12 +10,24 @@ MANYLINUX_TAG="${MANYLINUX_TAG:-manylinux_2_34_x86_64}"
 BUNDLE_CUDA="${BUNDLE_CUDA:-true}"
 WITH_CUDSS="${WITH_CUDSS:-true}"
 CUDSS_VERSION="${CUDSS_VERSION:-0.7.1.4}"
-# COLMAP 4.1.0 fetches ONNX Runtime 1.24.4's CUDA 12 provider.  Use cuDNN's
-# compact JIT runtime: it supports CUDA 12.8 while avoiding the much larger
-# precompiled-engine package.
+# COLMAP 4.1.0 fetches ONNX Runtime 1.24.4's CUDA 12 provider. Its CUDA EP uses
+# cuDNN's legacy API as well as the graph API, so the reduced JIT-only package
+# is insufficient (for example, ALIKED needs cudnnCreateFilterDescriptor from
+# libcudnn_ops). Keep this version aligned with ONNX Runtime's CUDA provider.
 ONNXRUNTIME_CUDNN_VERSION="${ONNXRUNTIME_CUDNN_VERSION:-9.10.2.21}"
 BUILD_ROOT="${BUILD_ROOT:-/workspace/build-custom-wheel}"
 WHEELHOUSE="${WHEELHOUSE:-/workspace/custom-wheelhouse}"
+
+CUDNN_RUNTIME_NAMES=(
+  libcudnn.so.9
+  libcudnn_adv.so.9
+  libcudnn_cnn.so.9
+  libcudnn_engines_precompiled.so.9
+  libcudnn_engines_runtime_compiled.so.9
+  libcudnn_graph.so.9
+  libcudnn_heuristic.so.9
+  libcudnn_ops.so.9
+)
 
 die() {
   echo "ERROR: $*" >&2
@@ -94,7 +106,7 @@ echo "Building pycolmap with:"
 echo "  Python:       $PYTHON_VERSION"
 echo "  CUDA:         $CUDA_VERSION"
 echo "  cuDSS:        $WITH_CUDSS ($CUDSS_VERSION)"
-echo "  ORT cuDNN:    $ONNXRUNTIME_CUDNN_VERSION (CUDA 12 JIT runtime)"
+echo "  ORT cuDNN:    $ONNXRUNTIME_CUDNN_VERSION (CUDA 12 full runtime)"
 echo "  Bundle CUDA:  $BUNDLE_CUDA"
 echo "  Platform:     $MANYLINUX_TAG (glibc $ACTUAL_GLIBC)"
 
@@ -109,12 +121,12 @@ if [[ "$CUDA_MAJOR" -ge 13 ]]; then
   ONNXRUNTIME_CUDA_PACKAGES+=(cuda-libraries-12-8)
 fi
 dnf install -y \
-  autoconf automake bison curl flex git libtool make patch \
+  autoconf automake binutils bison curl flex git libtool make patch \
   kernel-headers perl-core perl-IPC-Cmd pkgconf-pkg-config tar unzip wget which xz zip \
   "cuda-compiler-${CUDA_PACKAGE_SUFFIX}" \
   "cuda-libraries-devel-${CUDA_PACKAGE_SUFFIX}" \
   "cuda-nvtx-${CUDA_PACKAGE_SUFFIX}" \
-  "libcudnn9-jit-cuda-12-${ONNXRUNTIME_CUDNN_VERSION}-1" \
+  "libcudnn9-cuda-12-${ONNXRUNTIME_CUDNN_VERSION}-1" \
   "${ONNXRUNTIME_CUDA_PACKAGES[@]}"
 dnf clean all
 
@@ -317,10 +329,7 @@ fi
 
 CUDNN_RUNTIME_LIBS=()
 if [[ "$BUNDLE_CUDA" == true ]]; then
-  for name in \
-    libcudnn.so.9 \
-    libcudnn_graph.so.9 \
-    libcudnn_engines_runtime_compiled.so.9; do
+  for name in "${CUDNN_RUNTIME_NAMES[@]}"; do
     library=""
     for candidate in "/usr/lib64/$name" "/usr/lib/$name"; do
       if [[ -f "$candidate" ]]; then
@@ -328,7 +337,7 @@ if [[ "$BUNDLE_CUDA" == true ]]; then
         break
       fi
     done
-    [[ -n "$library" ]] || die "The cuDNN JIT runtime is missing $name"
+    [[ -n "$library" ]] || die "The full cuDNN runtime is missing $name"
     CUDNN_RUNTIME_LIBS+=("$library")
   done
 fi
@@ -373,11 +382,11 @@ if [[ "$BUNDLE_CUDA" == false ]]; then
     --exclude libcusolver.so.11 --exclude libcusparse.so.12
     --exclude libnvJitLink.so.12 --exclude libnvJitLink.so.13
     --exclude libnvrtc.so.12 --exclude libnvrtc.so.13
-    --exclude libcudnn.so.9
-    --exclude libcudnn_graph.so.9
-    --exclude libcudnn_engines_runtime_compiled.so.9
     --exclude libcudss.so.0
   )
+  for library in "${CUDNN_RUNTIME_NAMES[@]}"; do
+    EXCLUDE_ARGS+=(--exclude "$library")
+  done
 fi
 
 auditwheel show "$RAW_WHEEL"
@@ -406,10 +415,7 @@ if [[ "$BUNDLE_CUDA" == true ]]; then
     die "Bundled CUDA wheel does not contain libcudart"
   unzip -l "$REPAIRED_WHEEL" | grep -E 'libcufft[^/]*\.so' >/dev/null || \
     die "Bundled CUDA wheel does not contain libcufft"
-  for library in \
-    libcudnn.so.9 \
-    libcudnn_graph.so.9 \
-    libcudnn_engines_runtime_compiled.so.9; do
+  for library in "${CUDNN_RUNTIME_NAMES[@]}"; do
     unzip -Z1 "$REPAIRED_WHEEL" | grep -F "/$library" >/dev/null || \
       die "Bundled CUDA wheel does not contain $library"
   done
@@ -452,6 +458,22 @@ for name in (
     dependencies = result.stdout + result.stderr
     assert result.returncode == 0, dependencies
     assert "not found" not in dependencies, dependencies
+
+# cuDNN loads its split libraries with dlopen(), so ldd cannot prove that the
+# legacy API used by ONNX Runtime is present. Check the exact symbol whose
+# absence aborts ALIKED GPU extraction without initializing CUDA on this
+# driverless CI runner.
+ops_library = libs_dir / "libcudnn_ops.so.9"
+assert ops_library.is_file(), f"missing cuDNN ops library: {ops_library}"
+result = subprocess.run(
+    ["nm", "-D", "--defined-only", str(ops_library)],
+    capture_output=True,
+    text=True,
+    check=False,
+)
+symbols = result.stdout + result.stderr
+assert result.returncode == 0, symbols
+assert "cudnnCreateFilterDescriptor" in symbols, symbols
 
 print(f"Smoke test passed for pycolmap {pycolmap.__version__}")
 PY
