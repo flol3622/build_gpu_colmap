@@ -10,6 +10,10 @@ MANYLINUX_TAG="${MANYLINUX_TAG:-manylinux_2_34_x86_64}"
 BUNDLE_CUDA="${BUNDLE_CUDA:-true}"
 WITH_CUDSS="${WITH_CUDSS:-true}"
 CUDSS_VERSION="${CUDSS_VERSION:-0.7.1.4}"
+# COLMAP 4.1.0 fetches ONNX Runtime 1.24.4's CUDA 12 provider.  Use cuDNN's
+# compact JIT runtime: it supports CUDA 12.8 while avoiding the much larger
+# precompiled-engine package.
+ONNXRUNTIME_CUDNN_VERSION="${ONNXRUNTIME_CUDNN_VERSION:-9.10.2.21}"
 BUILD_ROOT="${BUILD_ROOT:-/workspace/build-custom-wheel}"
 WHEELHOUSE="${WHEELHOUSE:-/workspace/custom-wheelhouse}"
 
@@ -90,6 +94,7 @@ echo "Building pycolmap with:"
 echo "  Python:       $PYTHON_VERSION"
 echo "  CUDA:         $CUDA_VERSION"
 echo "  cuDSS:        $WITH_CUDSS ($CUDSS_VERSION)"
+echo "  ORT cuDNN:    $ONNXRUNTIME_CUDNN_VERSION (CUDA 12 JIT runtime)"
 echo "  Bundle CUDA:  $BUNDLE_CUDA"
 echo "  Platform:     $MANYLINUX_TAG (glibc $ACTUAL_GLIBC)"
 
@@ -97,12 +102,20 @@ dnf install -y dnf-plugins-core
 dnf config-manager --add-repo \
   "https://developer.download.nvidia.com/compute/cuda/repos/${CUDA_REPO_DISTRO}/x86_64/cuda-${CUDA_REPO_DISTRO}.repo"
 dnf clean all
+ONNXRUNTIME_CUDA_PACKAGES=()
+if [[ "$CUDA_MAJOR" -ge 13 ]]; then
+  # ONNX Runtime 1.24.4's published Linux GPU provider is linked against the
+  # CUDA 12 ABI even when the surrounding COLMAP build targets CUDA 13.
+  ONNXRUNTIME_CUDA_PACKAGES+=(cuda-libraries-12-8)
+fi
 dnf install -y \
   autoconf automake bison curl flex git libtool make patch \
   kernel-headers perl-core perl-IPC-Cmd pkgconf-pkg-config tar unzip wget which xz zip \
   "cuda-compiler-${CUDA_PACKAGE_SUFFIX}" \
   "cuda-libraries-devel-${CUDA_PACKAGE_SUFFIX}" \
-  "cuda-nvtx-${CUDA_PACKAGE_SUFFIX}"
+  "cuda-nvtx-${CUDA_PACKAGE_SUFFIX}" \
+  "libcudnn9-jit-cuda-12-${ONNXRUNTIME_CUDNN_VERSION}-1" \
+  "${ONNXRUNTIME_CUDA_PACKAGES[@]}"
 dnf clean all
 
 if [[ ! -x "$CUDA_ROOT/bin/nvcc" && -x /usr/local/cuda/bin/nvcc ]]; then
@@ -284,6 +297,72 @@ RAW_WHEEL="$(find "$WHEELHOUSE/raw" -maxdepth 1 -name '*.whl' -print -quit)"
 [[ -n "$RAW_WHEEL" ]] || die "The raw pycolmap wheel was not created"
 
 export LD_LIBRARY_PATH="${VCPKG_INSTALLED}/x64-linux/lib:${COLMAP_INSTALL}/lib:${COLMAP_INSTALL}/lib64:${CERES_INSTALL}/lib:${CERES_INSTALL}/lib64:$LD_LIBRARY_PATH"
+
+# ONNX Runtime discovers execution providers and cuDNN engine libraries with
+# dlopen(), so they are not reachable from pycolmap's normal DT_NEEDED graph.
+# Put them in the raw wheel before auditwheel runs: this lets auditwheel repair
+# the provider's CUDA dependencies and patch their names/rpaths consistently.
+ORT_PROVIDER_DIR=""
+for candidate in "$COLMAP_INSTALL/lib" "$COLMAP_INSTALL/lib64"; do
+  if [[ -f "$candidate/libonnxruntime_providers_shared.so" && \
+        -f "$candidate/libonnxruntime_providers_cuda.so" ]]; then
+    ORT_PROVIDER_DIR="$candidate"
+    break
+  fi
+done
+if [[ -z "$ORT_PROVIDER_DIR" ]]; then
+  find "$COLMAP_INSTALL" -name 'libonnxruntime_providers_*.so' -print >&2 || true
+  die "ONNX Runtime shared and CUDA providers were not installed under $COLMAP_INSTALL/lib{,64}"
+fi
+
+CUDNN_RUNTIME_LIBS=()
+if [[ "$BUNDLE_CUDA" == true ]]; then
+  for name in \
+    libcudnn.so.9 \
+    libcudnn_graph.so.9 \
+    libcudnn_engines_runtime_compiled.so.9; do
+    library=""
+    for candidate in "/usr/lib64/$name" "/usr/lib/$name"; do
+      if [[ -f "$candidate" ]]; then
+        library="$candidate"
+        break
+      fi
+    done
+    [[ -n "$library" ]] || die "The cuDNN JIT runtime is missing $name"
+    CUDNN_RUNTIME_LIBS+=("$library")
+  done
+fi
+
+INJECT_DIR="$(mktemp -d)"
+python -m wheel unpack "$RAW_WHEEL" -d "$INJECT_DIR"
+RAW_WHEEL_DIR="$(find "$INJECT_DIR" -mindepth 1 -maxdepth 1 -type d -name 'pycolmap-*' -print -quit)"
+[[ -n "$RAW_WHEEL_DIR" ]] || die "Could not locate the unpacked raw wheel"
+RAW_LIBS_DIR="$(find "$RAW_WHEEL_DIR" -type d -name '*.libs' -print -quit)"
+if [[ -z "$RAW_LIBS_DIR" ]]; then
+  RAW_LIBS_DIR="$RAW_WHEEL_DIR/pycolmap.libs"
+  mkdir -p "$RAW_LIBS_DIR"
+fi
+
+cp "$ORT_PROVIDER_DIR/libonnxruntime_providers_shared.so" "$RAW_LIBS_DIR/"
+cp "$ORT_PROVIDER_DIR/libonnxruntime_providers_cuda.so" "$RAW_LIBS_DIR/"
+for library in "${CUDNN_RUNTIME_LIBS[@]}"; do
+  cp -L "$library" "$RAW_LIBS_DIR/$(basename "$library")"
+done
+for library in \
+  "$RAW_LIBS_DIR/libonnxruntime_providers_shared.so" \
+  "$RAW_LIBS_DIR/libonnxruntime_providers_cuda.so"; do
+  patchelf --set-rpath '$ORIGIN' "$library"
+done
+for library in "$RAW_LIBS_DIR"/libcudnn*.so.9; do
+  [[ -f "$library" ]] && patchelf --set-rpath '$ORIGIN' "$library"
+done
+
+rm -f "$RAW_WHEEL"
+python -m wheel pack "$RAW_WHEEL_DIR" -d "$WHEELHOUSE/raw"
+rm -rf "$INJECT_DIR"
+RAW_WHEEL="$(find "$WHEELHOUSE/raw" -maxdepth 1 -name '*.whl' -print -quit)"
+[[ -n "$RAW_WHEEL" ]] || die "The ONNX-injected raw wheel was not created"
+
 EXCLUDE_ARGS=(--exclude libcuda.so.1)
 if [[ "$BUNDLE_CUDA" == false ]]; then
   EXCLUDE_ARGS+=(
@@ -294,6 +373,9 @@ if [[ "$BUNDLE_CUDA" == false ]]; then
     --exclude libcusolver.so.11 --exclude libcusparse.so.12
     --exclude libnvJitLink.so.12 --exclude libnvJitLink.so.13
     --exclude libnvrtc.so.12 --exclude libnvrtc.so.13
+    --exclude libcudnn.so.9
+    --exclude libcudnn_graph.so.9
+    --exclude libcudnn_engines_runtime_compiled.so.9
     --exclude libcudss.so.0
   )
 fi
@@ -306,41 +388,31 @@ rm -rf "$WHEELHOUSE/raw"
 REPAIRED_WHEEL="$(find "$WHEELHOUSE" -maxdepth 1 -name '*.whl' -print -quit)"
 [[ -n "$REPAIRED_WHEEL" ]] || die "auditwheel did not create a repaired wheel"
 
-# ONNX Runtime loads these providers with dlopen(), so auditwheel cannot
-# discover them through the normal DT_NEEDED graph. Keep the upstream build's
-# explicit provider injection behavior.
-if [[ -f "$COLMAP_INSTALL/lib/libonnxruntime_providers_shared.so" ]]; then
-  TMPDIR="$(mktemp -d)"
-  python -m wheel unpack "$REPAIRED_WHEEL" -d "$TMPDIR"
-  WHEEL_DIR="$(find "$TMPDIR" -mindepth 1 -maxdepth 1 -type d -name 'pycolmap-*' -print -quit)"
-  LIBS_DIR="$(find "$WHEEL_DIR" -type d -name '*.libs' -print -quit)"
-  if [[ -z "$LIBS_DIR" ]]; then
-    LIBS_DIR="$WHEEL_DIR/pycolmap.libs"
-    mkdir -p "$LIBS_DIR"
-  fi
-  cp "$COLMAP_INSTALL/lib/libonnxruntime_providers_shared.so" "$LIBS_DIR/"
-  cp "$COLMAP_INSTALL/lib/libonnxruntime_providers_cuda.so" "$LIBS_DIR/"
-  RENAMED_ORT="$(find "$LIBS_DIR" -maxdepth 1 -name 'libonnxruntime-*.so.*' -print -quit)"
-  if [[ -n "$RENAMED_ORT" ]]; then
-    ln -sfn "$(basename "$RENAMED_ORT")" "$LIBS_DIR/libonnxruntime.so.1"
-  fi
-  patchelf --set-rpath '$ORIGIN' "$LIBS_DIR/libonnxruntime_providers_shared.so"
-  patchelf --set-rpath '$ORIGIN' "$LIBS_DIR/libonnxruntime_providers_cuda.so"
-  rm -f "$REPAIRED_WHEEL"
-  python -m wheel pack "$WHEEL_DIR" -d "$WHEELHOUSE"
-  rm -rf "$TMPDIR"
-  REPAIRED_WHEEL="$(find "$WHEELHOUSE" -maxdepth 1 -name '*.whl' -print -quit)"
-fi
-
 EXPECTED_NAME="pycolmap-${WHEEL_VERSION}-cp${PYTHON_TAG}-cp${PYTHON_TAG}-${MANYLINUX_TAG}.whl"
 [[ "$(basename "$REPAIRED_WHEEL")" == "$EXPECTED_NAME" ]] || \
   die "Unexpected wheel name: $(basename "$REPAIRED_WHEEL"); expected $EXPECTED_NAME"
 unzip -p "$REPAIRED_WHEEL" '*dist-info/METADATA' | \
   grep -Fx "Version: $WHEEL_VERSION" >/dev/null || die "Wheel METADATA has the wrong version"
 
+for library in \
+  libonnxruntime_providers_shared.so \
+  libonnxruntime_providers_cuda.so; do
+  unzip -Z1 "$REPAIRED_WHEEL" | grep -F "/$library" >/dev/null || \
+    die "Repaired wheel does not contain $library"
+done
+
 if [[ "$BUNDLE_CUDA" == true ]]; then
   unzip -l "$REPAIRED_WHEEL" | grep -E 'libcudart[^/]*\.so' >/dev/null || \
     die "Bundled CUDA wheel does not contain libcudart"
+  unzip -l "$REPAIRED_WHEEL" | grep -E 'libcufft[^/]*\.so' >/dev/null || \
+    die "Bundled CUDA wheel does not contain libcufft"
+  for library in \
+    libcudnn.so.9 \
+    libcudnn_graph.so.9 \
+    libcudnn_engines_runtime_compiled.so.9; do
+    unzip -Z1 "$REPAIRED_WHEEL" | grep -F "/$library" >/dev/null || \
+      die "Bundled CUDA wheel does not contain $library"
+  done
 fi
 if [[ "$WITH_CUDSS" == true && "$BUNDLE_CUDA" == true ]]; then
   unzip -l "$REPAIRED_WHEEL" | grep -E 'libcudss[^/]*\.so' >/dev/null || \
@@ -350,8 +422,11 @@ fi
 auditwheel show "$REPAIRED_WHEEL"
 python -m pip install --force-reinstall "$REPAIRED_WHEEL"
 python - <<'PY'
+import ctypes
 import importlib.metadata
 import os
+from pathlib import Path
+
 import pycolmap
 
 assert pycolmap.__version__ == os.environ["BASE_VERSION"]
@@ -360,6 +435,16 @@ assert pycolmap.BundleAdjustmentBackend.CASPAR == pycolmap.BundleAdjustmentBacke
 options = pycolmap.BundleAdjustmentOptions()
 options.backend = pycolmap.BundleAdjustmentBackend.CASPAR
 assert isinstance(options.caspar, pycolmap.CasparBundleAdjustmentOptions)
+
+libs_dir = Path(pycolmap.__file__).resolve().parent.parent / "pycolmap.libs"
+for name in (
+    "libonnxruntime_providers_shared.so",
+    "libonnxruntime_providers_cuda.so",
+):
+    provider = libs_dir / name
+    assert provider.is_file(), f"missing ONNX Runtime provider: {provider}"
+    ctypes.CDLL(str(provider), mode=os.RTLD_GLOBAL)
+
 print(f"Smoke test passed for pycolmap {pycolmap.__version__}")
 PY
 
