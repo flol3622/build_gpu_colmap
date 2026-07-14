@@ -193,21 +193,6 @@ PY
 )"
 WHEEL_VERSION="${BASE_VERSION}${VERSION_SUFFIX}"
 export WHEEL_VERSION
-python - <<'PY'
-import os, pathlib, re
-path = pathlib.Path("third_party/colmap-for-pycolmap/pyproject.toml")
-text = path.read_text()
-updated, count = re.subn(
-    r'^version = "[^"]+"',
-    f'version = "{os.environ["WHEEL_VERSION"]}"',
-    text,
-    count=1,
-    flags=re.MULTILINE,
-)
-if count != 1:
-    raise SystemExit("Could not stamp the custom pycolmap version")
-path.write_text(updated)
-PY
 
 rm -rf "$BUILD_ROOT" "$WHEELHOUSE"
 mkdir -p "$BUILD_ROOT" "$WHEELHOUSE" /workspace/.cache/vcpkg
@@ -261,6 +246,25 @@ if [[ "$WITH_CUDSS" == true ]]; then
   grep -Eq '^find_dependency\(cudss([ )])' "$CERES_CONFIG" || \
     die "The installed Ceres package does not export its cuDSS dependency"
 fi
+
+# The top-level ExternalProject patch deliberately restores the upstream
+# release version while building COLMAP. Stamp the wheel metadata afterwards,
+# immediately before invoking the isolated Python wheel build.
+python - <<'PY'
+import os, pathlib, re
+path = pathlib.Path("third_party/colmap-for-pycolmap/pyproject.toml")
+text = path.read_text()
+updated, count = re.subn(
+    r'^version = "[^"]+"',
+    f'version = "{os.environ["WHEEL_VERSION"]}"',
+    text,
+    count=1,
+    flags=re.MULTILINE,
+)
+if count != 1:
+    raise SystemExit("Could not stamp the custom pycolmap version")
+path.write_text(updated)
+PY
 
 pushd third_party/colmap-for-pycolmap >/dev/null
 python -m pip wheel . --no-deps -w "$WHEELHOUSE/raw" \
