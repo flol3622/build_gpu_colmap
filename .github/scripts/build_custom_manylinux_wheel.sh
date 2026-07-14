@@ -191,6 +191,7 @@ if not match:
 print(match.group(1).split("+")[0])
 PY
 )"
+export BASE_VERSION
 WHEEL_VERSION="${BASE_VERSION}${VERSION_SUFFIX}"
 export WHEEL_VERSION
 
@@ -282,7 +283,7 @@ popd >/dev/null
 RAW_WHEEL="$(find "$WHEELHOUSE/raw" -maxdepth 1 -name '*.whl' -print -quit)"
 [[ -n "$RAW_WHEEL" ]] || die "The raw pycolmap wheel was not created"
 
-export LD_LIBRARY_PATH="${VCPKG_INSTALLED}/x64-linux/lib:${COLMAP_INSTALL}/lib:${CERES_INSTALL}/lib:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="${VCPKG_INSTALLED}/x64-linux/lib:${COLMAP_INSTALL}/lib:${COLMAP_INSTALL}/lib64:${CERES_INSTALL}/lib:${CERES_INSTALL}/lib64:$LD_LIBRARY_PATH"
 EXCLUDE_ARGS=(--exclude libcuda.so.1)
 if [[ "$BUNDLE_CUDA" == false ]]; then
   EXCLUDE_ARGS+=(
@@ -349,10 +350,12 @@ fi
 auditwheel show "$REPAIRED_WHEEL"
 python -m pip install --force-reinstall "$REPAIRED_WHEEL"
 python - <<'PY'
+import importlib.metadata
 import os
 import pycolmap
 
-assert pycolmap.__version__ == os.environ["WHEEL_VERSION"]
+assert pycolmap.__version__ == os.environ["BASE_VERSION"]
+assert importlib.metadata.version("pycolmap") == os.environ["WHEEL_VERSION"]
 assert pycolmap.BundleAdjustmentBackend.CASPAR == pycolmap.BundleAdjustmentBackend("CASPAR")
 options = pycolmap.BundleAdjustmentOptions()
 options.backend = pycolmap.BundleAdjustmentBackend.CASPAR
