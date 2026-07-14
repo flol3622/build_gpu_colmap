@@ -268,6 +268,7 @@ python -m pip wheel . --no-deps -w "$WHEELHOUSE/raw" \
   --config-settings="cmake.define.VCPKG_INSTALLED_DIR=${VCPKG_INSTALLED}" \
   --config-settings="cmake.define.CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}" \
   --config-settings="cmake.define.VCPKG_TARGET_TRIPLET=x64-linux" \
+  --config-settings="cmake.define.cudss_DIR=${CUDSS_DIR:-}" \
   --config-settings="cmake.define.CUDA_ENABLED=OFF" \
   --config-settings="cmake.define.CMAKE_CUDA_COMPILER=${CUDA_ROOT}/bin/nvcc" \
   --config-settings="cmake.define.CUDAToolkit_ROOT=${CUDA_ROOT}" \
