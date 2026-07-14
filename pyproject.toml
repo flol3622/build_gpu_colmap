@@ -1,0 +1,5 @@
+[build-system]
+requires = []
+build-backend = "wheel_redirect"
+backend-path = ["."]
+

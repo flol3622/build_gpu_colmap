@@ -31,7 +31,28 @@ consumers who specifically need the exact `manylinux_2_35` tag.
 Need AlmaLinux/RHEL 8 support instead? Build a `manylinux_2_28_x86_64` wheel
 yourself with the custom Linux workflow described below.
 
-## Install a released wheel
+## Install with uv
+
+Add this repository directly to any uv project:
+
+```bash
+uv add "git+https://github.com/flol3622/build_gpu_colmap"
+uv run python -c "import pycolmap; print(pycolmap.__version__)"
+```
+
+The repository's packaging backend selects the matching released wheel,
+verifies its pinned SHA-256 digest, and gives it to uv. It does not compile
+COLMAP locally. The current Git install supports CPython 3.12 on Linux x86_64
+(glibc 2.34 or newer) and Windows x86_64. The wheel is about 1.2–1.3 GiB, so
+the first resolution can take a while.
+
+To make an environment reproducible, append the packaging commit SHA:
+
+```bash
+uv add "git+https://github.com/flol3622/build_gpu_colmap@${COMMIT_SHA}"
+```
+
+## Install a downloaded wheel
 
 Download the matching wheel from
 [GitHub Releases](https://github.com/flol3622/build_gpu_colmap/releases), then
