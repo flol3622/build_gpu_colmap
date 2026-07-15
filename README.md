@@ -1,63 +1,35 @@
-# GPU pycolmap wheel builder
+# GPU pycolmap wheels
 
-GPU-enabled `pycolmap` wheels, built, repaired, validated, and published for
-you. This is a single-purpose fork of
-[`lyehe/build_gpu_colmap`](https://github.com/lyehe/build_gpu_colmap) that
-targets modern Linux, Red Hat-compatible Linux, and Windows.
+This repository builds and publishes exactly two GPU-enabled `pycolmap` wheels:
 
-It's not a general COLMAP distribution — no CPU-wheel matrix, no standalone
-COLMAP archives, no GUI packages, no every-upstream-variant coverage. Just one
-job, done well: reproducible GPU pycolmap wheels whose pinned NVIDIA runtimes
-install automatically as Python dependencies. The only system-level component
-you still need on the host is a compatible NVIDIA display driver.
+| Platform | Wheel |
+| --- | --- |
+| Linux x86_64, glibc 2.34+ | `pycolmap-4.1.0+cu128.pipcuda.cudss-cp312-cp312-manylinux_2_34_x86_64.whl` |
+| Windows x86_64 | `pycolmap-4.1.0+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl` |
 
-## Current wheel set
+Both target CPython 3.12 and COLMAP 4.1.0 with CUDA 12.8.1, cuDNN 9.10.2,
+cuDSS 0.7.1, ONNX Runtime CUDA inference, ALIKED/LightGlue, and the Caspar
+bundle-adjustment backend. CUDA, cuDNN, and cuDSS are pinned Python
+dependencies, so pip or uv installs the user-space GPU runtime automatically.
+Only a compatible NVIDIA driver must already be installed on the machine.
 
-The current release is
-[`pycolmap-4.1.0-cu128-cudss-r3`](https://github.com/flol3622/build_gpu_colmap/releases/tag/pycolmap-4.1.0-cu128-cudss-r3):
+This is not a general COLMAP distribution. It does not produce CPU wheels,
+standalone COLMAP archives, GUI packages, or an arbitrary build matrix.
 
-| Platform | Wheel | Baseline |
-| --- | --- | --- |
-| Linux x86_64 | `pycolmap-4.1.0+cu128.pipcuda.cudss-cp312-cp312-manylinux_2_34_x86_64.whl` | glibc 2.34; AlmaLinux/RHEL 9 class and newer |
-| Linux x86_64 | `pycolmap-4.1.0+cu128.pipcuda.cudss-cp312-cp312-manylinux_2_35_x86_64.whl` | glibc 2.35-tagged companion for newer distributions |
-| Windows AMD64 | `pycolmap-4.1.0+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl` | Windows 10/11 or Server 2022 |
+## Install
 
-These wheels target CPython 3.12 and declare exact CUDA 12.8.1, cuDNN 9.10.2,
-and cuDSS 0.7.1 dependencies, which pip and uv install automatically. The
-wheel itself contains the Caspar bundle-adjustment backend. If you're not sure
-which Linux wheel to grab, pick `manylinux_2_34`: it satisfies glibc 2.34 and
-runs fine on glibc 2.35 and newer too. The second file is only there for
-consumers who specifically need the exact `manylinux_2_35` tag.
-
-Need AlmaLinux/RHEL 8 support instead? Build a `manylinux_2_28_x86_64` wheel
-yourself with the custom Linux workflow described below.
-
-## Install with uv
-
-Add this repository directly to any uv project:
+Install through the repository's redirect package:
 
 ```bash
 uv add "git+https://github.com/flol3622/build_gpu_colmap"
 uv run python -c "import pycolmap; print(pycolmap.__version__)"
 ```
 
-The repository's packaging backend selects the matching released wheel,
-verifies its pinned SHA-256 digest, and gives it to uv. It does not compile
-COLMAP locally. The current Git install supports CPython 3.12 on Linux x86_64
-(glibc 2.34 or newer) and Windows x86_64. The GPU wheels are large, so the
-first resolution can take a while.
+The redirect backend selects the matching wheel from the latest pinned release
+and verifies its size and SHA-256 digest. It never compiles COLMAP locally.
 
-To make an environment reproducible, append the packaging commit SHA:
-
-```bash
-uv add "git+https://github.com/flol3622/build_gpu_colmap@${COMMIT_SHA}"
-```
-
-## Install a downloaded wheel
-
-Download the matching wheel from
-[GitHub Releases](https://github.com/flol3622/build_gpu_colmap/releases), then
-install it directly:
+Alternatively, download the matching asset from
+[GitHub Releases](https://github.com/flol3622/build_gpu_colmap/releases) and run:
 
 ```bash
 python -m pip install /path/to/pycolmap-4.1.0+cu128.pipcuda.cudss-cp312-cp312-manylinux_2_34_x86_64.whl
@@ -67,226 +39,59 @@ python -m pip install /path/to/pycolmap-4.1.0+cu128.pipcuda.cudss-cp312-cp312-ma
 python -m pip install C:\path\to\pycolmap-4.1.0+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl
 ```
 
-The package manager downloads the user-space GPU libraries from PyPI. It cannot
-install the kernel/display driver, so the host still needs an NVIDIA driver
-compatible with CUDA 12.8.
+A complete uv consumer example is in
+[`examples/uv/pyproject.toml`](examples/uv/pyproject.toml).
 
-## Use the wheels in a uv project
+## Build and publish a release
 
-Want a working example? See
-[`examples/uv/pyproject.toml`](examples/uv/pyproject.toml). It's just an
-ordinary `pycolmap` dependency plus uv-only, platform-specific direct wheel
-sources:
-
-```toml
-[project]
-name = "my-reconstruction-project"
-version = "0.1.0"
-requires-python = ">=3.12,<3.13"
-dependencies = [
-  "pycolmap>=4.1.0,<4.2; (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
-]
-
-[tool.uv]
-package = false
-required-environments = [
-  "sys_platform == 'linux' and platform_machine == 'x86_64'",
-  "sys_platform == 'win32' and platform_machine == 'AMD64'",
-]
-
-[tool.uv.sources]
-pycolmap = [
-  { url = "https://github.com/flol3622/build_gpu_colmap/releases/download/pycolmap-4.1.0-cu128-cudss-r3/pycolmap-4.1.0%2Bcu128.pipcuda.cudss-cp312-cp312-manylinux_2_34_x86_64.whl", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
-  { url = "https://github.com/flol3622/build_gpu_colmap/releases/download/pycolmap-4.1.0-cu128-cudss-r3/pycolmap-4.1.0%2Bcu128.pipcuda.cudss-cp312-cp312-win_amd64.whl", marker = "sys_platform == 'win32' and platform_machine == 'AMD64'" },
-]
-```
-
-Then resolve and install the project:
-
-```bash
-uv lock
-uv sync
-uv run python -c "import pycolmap; print(pycolmap.__version__)"
-```
-
-`tool.uv.sources` is project-local uv configuration; other package managers
-ignore it. The template picks the `manylinux_2_34` wheel since it also runs on
-glibc 2.35 and newer — swap in a custom 2.28 build if you're targeting
-AlmaLinux/RHEL 8. See uv's docs on
-[platform-specific and multiple dependency sources](https://docs.astral.sh/uv/concepts/projects/dependencies/#multiple-sources)
-for more.
-
-## What every wheel must prove
-
-Nothing gets uploaded until it passes every applicable check:
-
-- CUDA is enabled in the native COLMAP build.
-- Ceres detects and exports its cuDSS component.
-- Caspar is present in the installed COLMAP targets and pycolmap API.
-- `DOWNLOAD_ENABLED=ON` is present in the installed COLMAP CMake package.
-- The final filename, Python/ABI tags, platform tag, and package metadata match.
-- Linux wheels pass `auditwheel`; Windows wheels are repaired with `delvewheel`.
-- CUDA, cuDNN, and cuDSS are exact Python dependencies and are not duplicated
-  inside the pycolmap wheel.
-- Linux wheels contain both ONNX Runtime provider libraries. CI resolves their
-  complete linked dependency graph against the installed NVIDIA packages and
-  verifies the legacy cuDNN symbol used by ALIKED.
-- The repaired wheel installs and imports in a clean environment.
-- From an empty home/cache and without assigning a model path, constructing an
-  `ALIKED_N16ROT` extractor downloads, verifies, caches, and opens the default
-  `aliked-n16rot.onnx` model.
-
-The ALIKED gate lives in
-[`validate_aliked_download.py`](.github/scripts/validate_aliked_download.py).
-It makes sure runtime downloading actually works, not just that
-`-DDOWNLOAD_ENABLED=ON` was accepted at build time.
-
-## GitHub Actions for this fork
-
-Three workflows, three jobs:
-
-| Workflow | Purpose | Output |
-| --- | --- | --- |
-| [`build-required-pycolmap.yml`](.github/workflows/build-required-pycolmap.yml) | Build the maintained release subset in parallel | Two Linux CPython 3.12 wheels plus one Windows CPython 3.12 wheel |
-| [`build-custom-pycolmap.yml`](.github/workflows/build-custom-pycolmap.yml) | Build an on-demand Linux combination in a real PyPA manylinux container | Validated wheel(s) and `build_info.json` |
-| [`build-pycolmap.yml`](.github/workflows/build-pycolmap.yml) | Build the maintained Windows configuration | CUDA 12.8.1 + cuDSS CPython 3.12 wheel |
-
-### Build the maintained subset
-
-From the Actions UI, run **Build Required pycolmap Wheel Subset**. With the
-GitHub CLI:
+The public entry point is
+[`build-required-pycolmap.yml`](.github/workflows/build-required-pycolmap.yml).
+It calls the fixed Linux and Windows builders in parallel, publishes nothing
+unless both wheels pass, updates `release_wheels.json` on `master`, creates the
+requested tag at that exact commit, and marks the GitHub release as latest.
 
 ```bash
 gh workflow run build-required-pycolmap.yml \
   --ref master \
   -f release_tag=pycolmap-4.1.0-cu128-cudss-r3
-gh run list --workflow build-required-pycolmap.yml --limit 1
-gh run watch <run-id> --exit-status
 ```
 
-The workflow builds all three wheel assets, updates the pinned redirect manifest
-on `master`, creates the requested tag at that manifest commit, and publishes
-the assets as the latest release only after every job succeeds:
+The two platform workflows are reusable implementation details and cannot be
+dispatched independently.
 
-```bash
-TAG=pycolmap-4.1.0-cu128-cudss-r3
-gh workflow run build-required-pycolmap.yml --ref master -f release_tag="$TAG"
-```
+## Release gates
 
-### Build a custom Linux wheel
+Each release verifies that:
 
-The Linux workflow always compiles inside the selected PyPA container — no
-building on Ubuntu and relabeling the result afterward.
+- CUDA and cuDSS are enabled in the native build.
+- Caspar is exported by COLMAP and exposed in the pycolmap API.
+- `DOWNLOAD_ENABLED=ON` is retained for automatic ALIKED model downloads.
+- wheel names, tags, metadata, and pinned NVIDIA dependencies are exact.
+- NVIDIA runtime libraries are not duplicated inside the wheel.
+- Linux repair includes the ONNX Runtime CUDA providers and resolves their full
+  dependency graph against the installed NVIDIA packages.
+- Windows repair produces a clean-installable wheel whose NVIDIA DLLs preload
+  successfully before `_core.pyd` is imported.
+- a clean environment can import pycolmap and download/open the default
+  `aliked-n16rot.onnx` model.
 
-```bash
-gh workflow run build-custom-pycolmap.yml \
-  -f python_version=3.12 \
-  -f cuda_version=12.8 \
-  -f manylinux_tag=manylinux_2_34_x86_64 \
-  -f cudss=true \
-  -f bundle_cuda=false
-```
-
-Inputs:
-
-| Input | Accepted values | Notes |
-| --- | --- | --- |
-| `python_version` | `3.10`, `3.11`, `3.12`, `3.13`, `3.14` | Must exist in the selected PyPA image |
-| `cuda_version` | `12.8`, `13.0`, `13.1` | CUDA 13 adds Blackwell/SM 120 support |
-| `manylinux_tag` | `manylinux_2_34_x86_64`, `manylinux_2_28_x86_64` | 2.34 is AlmaLinux/RHEL 9 class; 2.28 is AlmaLinux/RHEL 8 class |
-| `cudss` | `true`, `false` | Enables the Ceres cuDSS sparse backend |
-| `bundle_cuda` | `true`, `false` | `false` uses pinned automatic NVIDIA dependencies (maintained CUDA 12.8 default); CUDA 13 currently requires `true` |
-| `release_tag` | existing tag or empty | Empty creates an Actions artifact; a tag uploads directly to its release |
-
-The automatic dependency path and manylinux_2_28 path are currently limited to
-CUDA 12.8. CUDA 13 custom builds must use `bundle_cuda=true`. The
-manylinux_2_34 path emits both 2.34 and 2.35 filenames after validating the
-actual binary against the 2.34 policy.
-
-### Build the maintained Windows wheel
-
-Run **Build Required Windows pycolmap Wheel** or:
-
-```bash
-gh workflow run build-pycolmap.yml
-```
-
-The Windows workflow sticks to one known-good combo: Windows Server 2022,
-CPython 3.12, CUDA 12.8.1, cuDSS 0.7.1.4, and Caspar. Only touch its single
-matrix entry when you're deliberately adding a new supported Windows variant.
-
-### Retry a failed build
-
-Native CUDA builds are long. Retry only failed jobs rather than restarting
-successful platforms:
-
-```bash
-gh run rerun <run-id> --failed
-gh run watch <run-id> --exit-status
-```
-
-## Developer guide
-
-Clone with submodules and keep them pinned:
-
-```bash
-git clone --recurse-submodules https://github.com/flol3622/build_gpu_colmap.git
-cd build_gpu_colmap
-git submodule update --init --recursive
-```
-
-Important files:
+## Repository layout
 
 | Path | Responsibility |
 | --- | --- |
-| [`CMakeLists.txt`](CMakeLists.txt) | Orchestrates pinned Ceres and COLMAP builds and forwards CUDA, cuDSS, Caspar, and download settings |
-| [`build_custom_manylinux_wheel.sh`](.github/scripts/build_custom_manylinux_wheel.sh) | Installs CUDA/cuDSS in the selected manylinux image, builds, repairs, stamps, and validates Linux wheels |
-| [`build-custom-pycolmap.yml`](.github/workflows/build-custom-pycolmap.yml) | Linux workflow inputs, container selection, cache, artifacts, and release upload |
-| [`build-pycolmap.yml`](.github/workflows/build-pycolmap.yml) | Windows build, delvewheel repair, runtime tests, and exact filename validation |
-| [`build-required-pycolmap.yml`](.github/workflows/build-required-pycolmap.yml) | Maintained cross-platform subset |
-| [`validate_aliked_download.py`](.github/scripts/validate_aliked_download.py) | Fresh-cache ALIKED runtime download test |
-| [`vcpkg.json`](vcpkg.json) | Native dependency manifest, including download-support dependencies |
-| [`patches/`](patches) | Minimal patches applied to the pinned upstream pycolmap/COLMAP source |
+| `CMakeLists.txt` | Builds pinned Ceres and COLMAP-for-pycolmap with CUDA, cuDSS, Caspar, and ONNX support |
+| `.github/scripts/build_manylinux_wheel.sh` | Builds, repairs, and validates the single Linux wheel in a PyPA container |
+| `.github/workflows/build-windows-pycolmap.yml` | Builds, repairs, and validates the single Windows wheel |
+| `.github/workflows/build-required-pycolmap.yml` | Coordinates and publishes the two-wheel release |
+| `patches/` | Minimal changes required on top of pinned upstream pycolmap/COLMAP |
+| `release_wheels.json` and `wheel_redirect.py` | Pin and serve the released platform wheels |
 
-Run lightweight checks before pushing:
+Run the lightweight repository checks with:
 
 ```bash
-bash -n .github/scripts/build_custom_manylinux_wheel.sh
-python3 -m py_compile \
-  .github/scripts/stamp_pycolmap_wheel.py \
-  .github/scripts/validate_aliked_download.py \
-  scripts/update_release_wheels.py
+bash -n .github/scripts/build_manylinux_wheel.sh
+python3 -m py_compile .github/scripts/*.py scripts/*.py wheel_redirect.py
 python3 -m json.tool vcpkg.json >/dev/null
-actionlint \
-  .github/workflows/build-required-pycolmap.yml \
-  .github/workflows/build-custom-pycolmap.yml \
-  .github/workflows/build-pycolmap.yml
+python3 -m unittest discover tests
 git diff --check
 ```
-
-The full build belongs in GitHub Actions: it needs CUDA installers, several
-gigabytes of dependencies, and wheel repair work — roughly an hour per
-uncached platform.
-
-Adding a new variant? Keep these in sync:
-
-1. Workflow choices or the Windows matrix.
-2. Version suffix and exact expected filename.
-3. CUDA/cuDSS install and library search paths.
-4. Wheel repair exclusions or bundled-library assertions.
-5. Release documentation and uv source markers/URLs.
-6. ALIKED, import, metadata, and platform-tag validation gates.
-
-Do not weaken a validation to make a filename appear. Fix the build so the
-wheel genuinely satisfies the name it publishes.
-
-## License and upstream projects
-
-The build orchestration in this repository is released under
-[The Unlicense](LICENSE). COLMAP, Ceres, CUDA, cuDSS, and all other bundled
-dependencies retain their own licenses.
-
-- Upstream build repository: [`lyehe/build_gpu_colmap`](https://github.com/lyehe/build_gpu_colmap)
-- COLMAP: [`colmap/colmap`](https://github.com/colmap/colmap)
-- pycolmap documentation: [COLMAP Python bindings](https://colmap.github.io/pycolmap/pycolmap.html)
-- manylinux images and policy: [`pypa/manylinux`](https://github.com/pypa/manylinux)

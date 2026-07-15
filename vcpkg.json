@@ -1,7 +1,7 @@
 {
-    "name":  "point-cloud-tools",
+    "name":  "gpu-pycolmap-wheel-builder",
     "version":  "0.1.0",
-    "description":  "Point cloud processing tools with COLMAP, GLOMAP, Ceres, and GPU support",
+    "description":  "Native dependencies for the maintained CUDA pycolmap wheels",
     "dependencies":  [
                          "eigen3",
                          "boost-program-options",
@@ -46,41 +46,7 @@
                                                            "platform":  "windows | linux"
                                                        }
                                                    ]
-                              },
-                     "qt5":  {
-                                 "description":  "Enable Qt5 GUI support for COLMAP",
-                                 "dependencies":  [
-                                                      "qt5-base",
-                                                      "qt5-3d"
-                                                  ]
-                             },
-                     "qt6":  {
-                                 "description":  "Enable Qt6 GUI support for COLMAP",
-                                 "dependencies":  [
-                                                      "qtbase",
-                                                      "qt3d",
-                                                      "qtsvg"
-                                                  ]
-                             },
-                     "opencv":  {
-                                    "description":  "Enable OpenCV support",
-                                    "dependencies":  [
-                                                         {
-                                                             "name":  "opencv",
-                                                             "features":  [
-                                                                              "contrib",
-                                                                              "nonfree"
-                                                                          ]
-                                                         }
-                                                     ]
-                                },
-                     "python":  {
-                                    "description":  "Enable Python bindings",
-                                    "dependencies":  [
-                                                         "pybind11",
-                                                         "python3"
-                                                     ]
-                                }
+                              }
                  },
     "builtin-baseline":  "c59b04f668d20c7dd83f478835e8266a3cc51270"
 }

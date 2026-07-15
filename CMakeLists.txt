@@ -16,7 +16,7 @@ if(CUDA_ENABLED)
     list(APPEND VCPKG_MANIFEST_FEATURES "cuda")
 endif()
 
-project(PointCloudTools)
+project(GPUColmapWheelBuilder)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -26,8 +26,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(ExternalProject)
 
 # Options for build modules
-option(BUILD_COLMAP "Build COLMAP" ON)
-option(BUILD_COLMAP_FOR_PYCOLMAP "Build COLMAP for pycolmap (Python wheels)" OFF)
+option(BUILD_COLMAP "Build standalone COLMAP" OFF)
+option(BUILD_COLMAP_FOR_PYCOLMAP "Build COLMAP for pycolmap wheels" ON)
 option(BUILD_CERES "Build Ceres Solver" ON)
 option(GUI_ENABLED "Enable GUI support for COLMAP" OFF)
 set(COLMAP_RELEASE_VERSION "4.1.0" CACHE STRING "Version string to stamp into COLMAP and pycolmap release builds")
@@ -286,7 +286,7 @@ if(CUDA_ENABLED)
         endif()
     else()
         message(STATUS "cuDSS: NOT FOUND (optional - provides 2-5x performance improvement)")
-        message(STATUS "  To install cuDSS, see: docs/INSTALL_CUDSS.md")
+        message(STATUS "  The maintained wheel build requires a cuDSS installation")
     endif()
 endif()
 

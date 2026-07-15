@@ -576,45 +576,4 @@ ALIKED_TEST_HOME="$(mktemp -d)"
 HOME="$ALIKED_TEST_HOME" python .github/scripts/validate_aliked_download.py
 rm -rf "$ALIKED_TEST_HOME"
 
-# A wheel that genuinely satisfies the 2.34 baseline is also valid with the
-# stricter 2.35 tag. Emit both distribution filenames while keeping the wheel
-# metadata and RECORD correct; `wheel tags` performs the metadata rewrite.
-if [[ "$MANYLINUX_TAG" == manylinux_2_34_x86_64 ]]; then
-  python -m wheel tags \
-    --platform-tag manylinux_2_35_x86_64 \
-    "$REPAIRED_WHEEL"
-  COMPATIBLE_NAME="pycolmap-${WHEEL_VERSION}-cp${PYTHON_TAG}-cp${PYTHON_TAG}-manylinux_2_35_x86_64.whl"
-  COMPATIBLE_WHEEL="$WHEELHOUSE/$COMPATIBLE_NAME"
-  [[ -f "$COMPATIBLE_WHEEL" ]] || die "The manylinux_2_35 wheel was not emitted"
-  unzip -p "$COMPATIBLE_WHEEL" '*dist-info/METADATA' | \
-    grep -Fx "Version: $WHEEL_VERSION" >/dev/null || \
-    die "The manylinux_2_35 wheel METADATA has the wrong version"
-  unzip -p "$COMPATIBLE_WHEEL" '*dist-info/WHEEL' | \
-    grep -Fx "Tag: cp${PYTHON_TAG}-cp${PYTHON_TAG}-manylinux_2_35_x86_64" >/dev/null || \
-    die "The manylinux_2_35 wheel has the wrong internal platform tag"
-fi
-
-ACTUAL_CUDA_VERSION="$(nvcc --version | sed -n 's/.*release \([0-9.]*\).*/\1/p' | head -n 1)"
-BUILD_INFO="$WHEELHOUSE/${EXPECTED_NAME%.whl}.build_info.json"
-CUDSS_BUILD_VERSION=""
-if [[ "$WITH_CUDSS" == true ]]; then
-  CUDSS_BUILD_VERSION="$CUDSS_VERSION"
-fi
-if [[ "$CUDA_MAJOR" -ge 13 ]]; then
-  CUDA_ARCHITECTURES='75;80;86;89;90;120'
-else
-  CUDA_ARCHITECTURES='75;80;86;89;90'
-fi
-python scripts/emit_build_info.py \
-  --output "$BUILD_INFO" \
-  --colmap-dir third_party/colmap-for-pycolmap \
-  --os "$MANYLINUX_TAG" \
-  --variant "pycolmap $WHEEL_VERSION" \
-  --cuda-version "${ACTUAL_CUDA_VERSION:-$CUDA_VERSION}" \
-  --cudss-version "$CUDSS_BUILD_VERSION" \
-  --caspar true \
-  --cudss "$WITH_CUDSS" \
-  --gui false \
-  --cuda-arch "$CUDA_ARCHITECTURES"
-
 echo "Built and validated: $REPAIRED_WHEEL"

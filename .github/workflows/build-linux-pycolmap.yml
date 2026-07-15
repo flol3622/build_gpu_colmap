@@ -1,0 +1,91 @@
+name: Build Linux pycolmap Wheel
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-pycolmap-wheel
+  cancel-in-progress: false
+
+jobs:
+  build-wheel:
+    name: CPython 3.12 CUDA 12.8 manylinux_2_34
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout repository and pinned submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Free runner disk space
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/share/swift
+          sudo apt-get clean
+          docker system prune --all --force
+          df -h
+
+      - name: Restore vcpkg binary cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/vcpkg
+          key: vcpkg-12.8-manylinux_2_34-${{ hashFiles('vcpkg.json', 'overlay-ports/**', 'patches/**') }}
+          restore-keys: |
+            vcpkg-12.8-manylinux_2_34-
+
+      - name: Build in the selected PyPA manylinux container
+        env:
+          PYTHON_VERSION: '3.12'
+          CUDA_VERSION: '12.8'
+          MANYLINUX_TAG: manylinux_2_34_x86_64
+          WITH_CUDSS: 'true'
+          BUNDLE_CUDA: 'false'
+          VCPKG_BINARY_SOURCES: clear;files,/workspace/.cache/vcpkg,readwrite
+        run: |
+          image="quay.io/pypa/${MANYLINUX_TAG}"
+          docker pull "$image"
+          docker run --rm --shm-size=2g \
+            --env PYTHON_VERSION \
+            --env CUDA_VERSION \
+            --env MANYLINUX_TAG \
+            --env WITH_CUDSS \
+            --env BUNDLE_CUDA \
+            --env VCPKG_BINARY_SOURCES \
+            --env GITHUB_SHA \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --workdir /workspace \
+            "$image" \
+            bash .github/scripts/build_manylinux_wheel.sh
+
+      - name: Save vcpkg binary cache
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/vcpkg
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
+
+      - name: List validated outputs
+        run: |
+          ls -lh custom-wheelhouse
+          {
+            echo '### Linux pycolmap wheel'
+            echo
+            echo '```text'
+            find custom-wheelhouse -maxdepth 1 -type f -printf '%f\n' | sort
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pycolmap-linux-cp312-cu128
+          path: custom-wheelhouse/*.whl
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

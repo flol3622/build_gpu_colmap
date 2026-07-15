@@ -76,13 +76,6 @@ _skbuild/
 *.egg
 *.whl
 
-# Release packages (binaries only, keep documentation)
-releases/*.zip
-releases/*.whl
-releases/*-artifacts/
-releases/temp/
-releases/temp-*/
-
 # Windows specific
 Thumbs.db
 Desktop.ini
@@ -103,12 +96,6 @@ CTestTestfile.cmake
 .conan/
 vcpkg_installed/
 
-# Documentation build artifacts
-docs/build/
-docs/_build/
-docs/html/
-docs/latex/
-
 # CUDA compilation artifacts
 *.cubin
 *.cu.cpp
@@ -118,6 +105,3 @@ docs/latex/
 # Backup files
 *.bak
 *.orig
-
-# Keep .claude directory but ignore potential cache
-.claude

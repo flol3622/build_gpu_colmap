@@ -2,19 +2,13 @@ name: Build Required Windows pycolmap Wheel
 
 on:
   workflow_call:
-    inputs:
-      release_tag:
-        description: 'Release tag to upload assets to (empty = no upload)'
-        type: string
-        default: ''
-  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-wheels:
-    name: py${{ matrix.python-version }} ${{ matrix.os }} ${{ matrix.cuda && matrix.bundle_cuda && format('CUDA{0}-bundled', matrix.cuda_version) || matrix.cuda && matrix.cudss && format('CUDA{0}+cuDSS', matrix.cuda_version) || matrix.cuda && format('CUDA{0}', matrix.cuda_version) || 'CPU' }}
+    name: CPython 3.12 CUDA 12.8 + cuDSS
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -24,7 +18,6 @@ jobs:
             python-version: '3.12'
             cuda: true
             cudss: true
-            bundle_cuda: false
             cuda_version: '12.8.1'
 
     steps:
@@ -69,22 +62,6 @@ jobs:
         run: git -C third_party/vcpkg fetch --unshallow || true
         shell: bash
 
-      # ==================== Disk Space Cleanup ====================
-      - name: Free disk space (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          echo "Disk space before cleanup:"
-          df -h
-          # Remove unnecessary large packages
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/share/swift
-          # Clean apt cache
-          sudo apt-get clean
-          echo "Disk space after cleanup:"
-          df -h
-
       # ==================== Python Setup ====================
       - name: Setup Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -96,7 +73,6 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel scikit-build-core[pyproject] "pybind11>=3.0.2" delvewheel
 
       # ==================== CUDA Setup ====================
-      # CUDA 13.x adds a new "crt" sub-package (contains crt/host_config.h)
       - name: Install CUDA Toolkit (Windows, CUDA 12.x)
         if: matrix.cuda && runner.os == 'Windows' && !startsWith(matrix.cuda_version, '13.')
         uses: Jimver/cuda-toolkit@v0.2.30
@@ -106,25 +82,6 @@ jobs:
           sub-packages: '["nvcc", "nvtx", "cudart", "curand", "curand_dev", "nvrtc", "nvrtc_dev", "nvjitlink", "cublas", "cublas_dev", "cusparse", "cusparse_dev", "cusolver", "cusolver_dev", "cufft", "cufft_dev"]'
           use-github-cache: false
           log-file-suffix: '-windows-py${{ matrix.python-version }}-cuda${{ matrix.cuda_version }}.log'
-
-      - name: Install CUDA Toolkit (Windows, CUDA 13.x)
-        if: matrix.cuda && runner.os == 'Windows' && startsWith(matrix.cuda_version, '13.')
-        uses: Jimver/cuda-toolkit@v0.2.30
-        with:
-          cuda: ${{ matrix.cuda_version }}
-          method: 'network'
-          sub-packages: '["nvcc", "crt", "nvtx", "cudart", "curand", "curand_dev", "nvrtc", "nvrtc_dev", "nvjitlink", "nvvm", "cublas", "cublas_dev", "cusparse", "cusparse_dev", "cusolver", "cusolver_dev", "cufft", "cufft_dev"]'
-          use-github-cache: false
-          log-file-suffix: '-windows-py${{ matrix.python-version }}-cuda${{ matrix.cuda_version }}.log'
-
-      - name: Install CUDA Toolkit (Linux)
-        if: matrix.cuda && runner.os == 'Linux'
-        uses: Jimver/cuda-toolkit@v0.2.30
-        with:
-          cuda: ${{ matrix.cuda_version }}
-          method: 'network'
-          linux-local-args: '["--toolkit"]'
-          log-file-suffix: '-linux-py${{ matrix.python-version }}-cuda${{ matrix.cuda_version }}.log'
 
       # ==================== cuDSS Setup ====================
       - name: Install cuDSS (Windows)
@@ -152,31 +109,6 @@ jobs:
           Write-Host "cudss_DIR: $cudssDir"
           echo "cudss_DIR=$cudssDir" >> $env:GITHUB_ENV
 
-      - name: Install cuDSS (Linux)
-        if: matrix.cuda && matrix.cudss && runner.os == 'Linux'
-        run: |
-          CUDA_VERSION="${{ matrix.cuda_version }}"
-          CUDA_MAJOR="${CUDA_VERSION%%.*}"
-
-          echo "Downloading cuDSS for CUDA $CUDA_MAJOR..."
-          CUDSS_URL="https://developer.download.nvidia.com/compute/cudss/redist/libcudss/linux-x86_64/libcudss-linux-x86_64-0.7.1.4_cuda${CUDA_MAJOR}-archive.tar.xz"
-
-          wget -nv "$CUDSS_URL" -O cudss.tar.xz
-          sudo mkdir -p /opt/nvidia/cudss
-          sudo tar -xf cudss.tar.xz -C /opt/nvidia/cudss --strip-components=1
-
-          echo "cuDSS installed at: /opt/nvidia/cudss"
-          echo "CUDSS_ROOT=/opt/nvidia/cudss" >> $GITHUB_ENV
-
-          # Find cudss_DIR (CMake config location)
-          if [ -d "/opt/nvidia/cudss/lib/$CUDA_MAJOR/cmake/cudss" ]; then
-            CUDSS_DIR="/opt/nvidia/cudss/lib/$CUDA_MAJOR/cmake/cudss"
-          else
-            CUDSS_DIR="/opt/nvidia/cudss/lib/cmake/cudss"
-          fi
-          echo "cudss_DIR: $CUDSS_DIR"
-          echo "cudss_DIR=$CUDSS_DIR" >> $GITHUB_ENV
-
       # ==================== Build Tools ====================
       - name: Install Ninja (Windows)
         if: runner.os == 'Windows'
@@ -189,29 +121,12 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Install build dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            curl zip unzip tar pkg-config \
-            autoconf autoconf-archive automake libtool make \
-            ninja-build ccache patchelf \
-            libgl-dev libgl1-mesa-dev libglu1-mesa-dev libglew-dev \
-            libxmu-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
-            libomp-dev
-
       # ==================== Compiler Caching ====================
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1
         with:
           key: ccache-pycolmap-${{ matrix.os }}-${{ matrix.cuda && 'cuda' || 'cpu' }}-py${{ matrix.python-version }}
           max-size: 2G
-
-      - name: Configure ccache (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          echo "/usr/lib/ccache" >> $GITHUB_PATH
 
       # ==================== vcpkg Setup ====================
       - name: Setup vcpkg
@@ -303,65 +218,6 @@ jobs:
               exit 1
             }
 
-      - name: Build COLMAP-for-pycolmap (Linux)
-        if: runner.os == 'Linux'
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 240
-          max_attempts: 3
-          retry_wait_seconds: 30
-          command: |
-            CUDA_FLAG="${{ matrix.cuda && 'ON' || 'OFF' }}"
-            CUDSS_FLAG="${{ matrix.cudss && 'true' || 'false' }}"
-            CASPAR_FLAG="${{ matrix.cuda && 'ON' || 'OFF' }}"
-
-            echo "Building COLMAP-for-pycolmap with CUDA=$CUDA_FLAG cuDSS=$CUDSS_FLAG Caspar=$CASPAR_FLAG"
-
-            # Create build directory
-            mkdir -p build
-            cd build
-
-            # Build cmake args
-            CMAKE_ARGS=(
-              -G Ninja
-              -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake"
-              -DCMAKE_BUILD_TYPE=Release
-              -DCUDA_ENABLED="$CUDA_FLAG"
-              -DCASPAR_ENABLED="$CASPAR_FLAG"
-              -DBUILD_COLMAP=OFF
-              -DBUILD_COLMAP_FOR_PYCOLMAP=ON
-              -DBUILD_CERES=ON
-            )
-
-            if [ "$CUDA_FLAG" = "ON" ]; then
-              CUDA_ROOT="${CUDA_PATH:-/usr/local/cuda}"
-              CUDA_COMPILER="$CUDA_ROOT/bin/nvcc"
-              if [ ! -x "$CUDA_COMPILER" ]; then
-                echo "ERROR: CUDA compiler not found at $CUDA_COMPILER"
-                exit 1
-              fi
-              echo "Using CUDA root: $CUDA_ROOT"
-              echo "Using CUDA compiler: $CUDA_COMPILER"
-              CMAKE_ARGS+=(
-                -DCMAKE_CUDA_COMPILER="$CUDA_COMPILER"
-                -DCUDAToolkit_ROOT="$CUDA_ROOT"
-                -DCUDA_TOOLKIT_ROOT_DIR="$CUDA_ROOT"
-              )
-            fi
-
-            # Add cuDSS paths if enabled
-            if [ "$CUDSS_FLAG" = "true" ] && [ -n "$cudss_DIR" ]; then
-              echo "Adding cuDSS from: $cudss_DIR"
-              CMAKE_ARGS+=(-Dcudss_DIR="$cudss_DIR")
-            fi
-
-            # Configure
-            cmake .. "${CMAKE_ARGS[@]}" \
-              -DGFLAGS_USE_TARGET_NAMESPACE=ON
-
-            # Build
-            cmake --build . --config Release --parallel
-
       - name: Verify Caspar export for pycolmap COLMAP (Windows)
         if: matrix.cuda && runner.os == 'Windows'
         shell: pwsh
@@ -382,26 +238,6 @@ jobs:
             exit 1
           }
           Write-Host "Caspar export for pycolmap COLMAP verified" -ForegroundColor Green
-
-      - name: Verify Caspar export for pycolmap COLMAP (Linux)
-        if: matrix.cuda && runner.os == 'Linux'
-        run: |
-          TARGETS="build/install/colmap-for-pycolmap/share/colmap/colmap-targets.cmake"
-          HEADER="build/install/colmap-for-pycolmap/include/colmap/thirdparty/Symforce-Caspar/generated/f32/solver.h"
-
-          if [ ! -f "$TARGETS" ]; then
-            echo "ERROR: COLMAP targets file not found at $TARGETS"
-            exit 1
-          fi
-          if ! grep -q "caspar_lib_core" "$TARGETS"; then
-            echo "ERROR: Caspar target is missing from COLMAP-for-pycolmap export"
-            exit 1
-          fi
-          if [ ! -f "$HEADER" ]; then
-            echo "ERROR: Caspar generated headers were not installed at $HEADER"
-            exit 1
-          fi
-          echo "Caspar export for pycolmap COLMAP verified"
 
       # ==================== Build Python Wheel ====================
       - name: Stamp wheel metadata version
@@ -471,52 +307,6 @@ jobs:
             --config-settings="cmake.define.VCPKG_TARGET_TRIPLET=x64-windows" `
             --config-settings="cmake.define.CUDA_ENABLED=OFF" `
             @cudaArgs
-
-      - name: Build wheel (Linux)
-        if: runner.os == 'Linux'
-        working-directory: third_party/colmap-for-pycolmap
-        run: |
-          # Get paths
-          VCPKG_TOOLCHAIN="${{ github.workspace }}/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake"
-          VCPKG_INSTALLED="${{ github.workspace }}/build/vcpkg_installed"
-          COLMAP_INSTALL="${{ github.workspace }}/build/install/colmap-for-pycolmap"
-          CERES_INSTALL="${{ github.workspace }}/build/install/ceres"
-          PYBIND11_DIR=$(python -c "import pybind11; print(pybind11.get_cmake_dir())")
-
-          # CMake expects semicolons as list separators (not colons)
-          CMAKE_PREFIX_PATH="${COLMAP_INSTALL};${CERES_INSTALL};${PYBIND11_DIR}"
-
-          echo "CMAKE_TOOLCHAIN_FILE: $VCPKG_TOOLCHAIN"
-          echo "VCPKG_INSTALLED_DIR: $VCPKG_INSTALLED"
-          echo "CMAKE_PREFIX_PATH: $CMAKE_PREFIX_PATH"
-          echo "Note: CUDA_ENABLED=OFF for wheel build (uses pre-built CUDA-enabled COLMAP)"
-
-          CUDA_ARGS=()
-          if [ "${{ matrix.cuda }}" = "true" ]; then
-            CUDA_ROOT="${CUDA_PATH:-/usr/local/cuda}"
-            CUDA_COMPILER="$CUDA_ROOT/bin/nvcc"
-            if [ ! -x "$CUDA_COMPILER" ]; then
-              echo "ERROR: CUDA compiler not found at $CUDA_COMPILER"
-              exit 1
-            fi
-            echo "Setting CMAKE_CUDA_COMPILER: $CUDA_COMPILER"
-            echo "Setting CUDAToolkit_ROOT: $CUDA_ROOT"
-            CUDA_ARGS+=(
-              --config-settings="cmake.define.CMAKE_CUDA_COMPILER=${CUDA_COMPILER}"
-              --config-settings="cmake.define.CUDAToolkit_ROOT=${CUDA_ROOT}"
-              --config-settings="cmake.define.CUDA_TOOLKIT_ROOT_DIR=${CUDA_ROOT}"
-            )
-          fi
-
-          # Build wheel - CUDA_ENABLED=OFF because we link against pre-built COLMAP
-          # The COLMAP library already has CUDA support, wheel doesn't compile CUDA code
-          python -m pip wheel . --no-deps -w wheelhouse \
-            --config-settings="cmake.define.CMAKE_TOOLCHAIN_FILE=${VCPKG_TOOLCHAIN}" \
-            --config-settings="cmake.define.VCPKG_INSTALLED_DIR=${VCPKG_INSTALLED}" \
-            --config-settings="cmake.define.CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}" \
-            --config-settings="cmake.define.VCPKG_TARGET_TRIPLET=x64-linux" \
-            --config-settings="cmake.define.CUDA_ENABLED=OFF" \
-            "${CUDA_ARGS[@]}"
 
       # ==================== Repair Wheel ====================
       - name: Repair wheel with delvewheel (Windows)
@@ -594,156 +384,6 @@ jobs:
             exit 1
           }
 
-      - name: Repair wheel with auditwheel (Linux)
-        if: runner.os == 'Linux'
-        working-directory: third_party/colmap-for-pycolmap
-        run: |
-          pip install auditwheel patchelf
-
-          WHEEL=$(ls wheelhouse/pycolmap-*.whl | head -n 1)
-
-          if [ -n "$WHEEL" ]; then
-            echo "Repairing wheel: $WHEEL"
-
-            # Set library paths for auditwheel - include all dependency locations
-            export LD_LIBRARY_PATH="${{ github.workspace }}/build/vcpkg_installed/x64-linux/lib:${{ github.workspace }}/build/install/colmap-for-pycolmap/lib:${{ github.workspace }}/build/install/ceres/lib:$LD_LIBRARY_PATH"
-
-            # Add CUDA library paths if CUDA build
-            if [ "${{ matrix.cuda }}" = "true" ]; then
-              export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
-            fi
-
-            # Add cuDSS library paths if cuDSS build
-            if [ "${{ matrix.cudss }}" = "true" ] && [ -n "$CUDSS_ROOT" ]; then
-              for dir in "$CUDSS_ROOT/lib/12" "$CUDSS_ROOT/lib64/12" "$CUDSS_ROOT/lib" "$CUDSS_ROOT/lib64"; do
-                if [ -d "$dir" ]; then
-                  echo "Adding cuDSS lib path: $dir"
-                  export LD_LIBRARY_PATH="$dir:$LD_LIBRARY_PATH"
-                  break
-                fi
-              done
-            fi
-
-            echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
-
-            # Show wheel info first
-            auditwheel show "$WHEEL" || true
-
-            # Build CUDA library exclusion list for auditwheel.
-            EXCLUDE_ARGS=""
-            if [ "${{ matrix.cuda }}" = "true" ]; then
-              if [ "${{ matrix.bundle_cuda }}" = "true" ]; then
-                # Self-contained build: only exclude the driver library (must match kernel)
-                EXCLUDE_ARGS="--exclude libcuda.so.1"
-              else
-                # Lightweight build: exclude all CUDA toolkit libraries (user provides these)
-                EXCLUDE_ARGS="
-                  --exclude libcuda.so.1
-                  --exclude libcudart.so.11.0
-                  --exclude libcudart.so.12
-                  --exclude libcublas.so.11
-                  --exclude libcublas.so.12
-                  --exclude libcublasLt.so.11
-                  --exclude libcublasLt.so.12
-                  --exclude libcufft.so.10
-                  --exclude libcufft.so.11
-                  --exclude libcufftw.so.10
-                  --exclude libcufftw.so.11
-                  --exclude libcurand.so.10
-                  --exclude libcusolver.so.11
-                  --exclude libcusolverMg.so.11
-                  --exclude libcusparse.so.11
-                  --exclude libcusparse.so.12
-                  --exclude libnvJitLink.so.12
-                  --exclude libnvrtc.so.11.2
-                  --exclude libnvrtc.so.12
-                  --exclude libcudnn.so.8
-                  --exclude libcudnn.so.9
-                  --exclude libnccl.so.2
-                  --exclude libnvToolsExt.so.1
-                  --exclude libcudss.so.0
-                "
-              fi
-            fi
-
-            # Determine the minimum manylinux platform tag.
-            # Ubuntu 22.04 has glibc 2.35, so manylinux_2_35 is the baseline.
-            # Try progressively older tags in case the toolchain allows it.
-            REPAIRED=false
-            for PLAT in manylinux_2_35_x86_64 manylinux_2_31_x86_64; do
-              echo "Attempting auditwheel repair with --plat $PLAT..."
-              if auditwheel repair "$WHEEL" -w wheelhouse --plat "$PLAT" $EXCLUDE_ARGS; then
-                echo "Created $PLAT wheel"
-                REPAIRED=true
-                # Remove original unrepaired wheel to avoid confusion
-                rm -f "$WHEEL"
-                break
-              fi
-            done
-
-            if [ "$REPAIRED" = false ]; then
-              echo "ERROR: auditwheel repair failed for all platform targets"
-              echo "The wheel will not have bundled shared libraries and will fail on user systems."
-              exit 1
-            fi
-
-            # Post-process: inject ONNX Runtime CUDA provider libraries into the wheel.
-            # auditwheel doesn't bundle these because onnxruntime loads them via dlopen(),
-            # not via DT_NEEDED. Without them, ALIKED/LightGlue CUDA inference fails.
-            if [ "${{ matrix.cuda }}" = "true" ]; then
-              COLMAP_LIB="${{ github.workspace }}/build/install/colmap-for-pycolmap/lib"
-              REPAIRED_WHEEL=$(ls -t wheelhouse/pycolmap-*manylinux*.whl 2>/dev/null | head -n 1)
-
-              if [ -n "$REPAIRED_WHEEL" ] && [ -f "$COLMAP_LIB/libonnxruntime_providers_shared.so" ]; then
-                echo "Injecting ONNX Runtime CUDA providers into wheel..."
-                pip install wheel
-
-                TMPDIR=$(mktemp -d)
-                python -m wheel unpack "$REPAIRED_WHEEL" -d "$TMPDIR"
-                WHEEL_DIR=$(ls -d "$TMPDIR"/pycolmap-*)
-
-                # Find the .libs directory created by auditwheel
-                LIBS_DIR=$(find "$WHEEL_DIR" -name "*.libs" -type d | head -1)
-                if [ -z "$LIBS_DIR" ]; then
-                  LIBS_DIR="$WHEEL_DIR/pycolmap.libs"
-                  mkdir -p "$LIBS_DIR"
-                fi
-
-                # Copy provider libraries with their original names (onnxruntime dlopen expects these exact names)
-                cp "$COLMAP_LIB/libonnxruntime_providers_shared.so" "$LIBS_DIR/"
-                cp "$COLMAP_LIB/libonnxruntime_providers_cuda.so" "$LIBS_DIR/"
-
-                # Create symlink so providers can find libonnxruntime.so.1 (auditwheel renamed it)
-                RENAMED_ORT=$(ls "$LIBS_DIR"/libonnxruntime-*.so.* 2>/dev/null | head -1)
-                if [ -n "$RENAMED_ORT" ]; then
-                  ln -sf "$(basename "$RENAMED_ORT")" "$LIBS_DIR/libonnxruntime.so.1"
-                fi
-
-                # Set RPATH on providers to find libs in the same directory
-                patchelf --set-rpath '$ORIGIN' "$LIBS_DIR/libonnxruntime_providers_shared.so"
-                patchelf --set-rpath '$ORIGIN' "$LIBS_DIR/libonnxruntime_providers_cuda.so"
-
-                # Repack wheel
-                rm -f "$REPAIRED_WHEEL"
-                python -m wheel pack "$WHEEL_DIR" -d wheelhouse
-                rm -rf "$TMPDIR"
-
-                echo "ONNX Runtime CUDA providers injected successfully"
-                ls -la "$LIBS_DIR"/libonnx* "$LIBS_DIR"/libonnxruntime.so.1 2>/dev/null || true
-              else
-                echo "WARNING: ONNX provider libraries not found, skipping injection"
-              fi
-            fi
-
-            # List final wheels
-            echo "Wheels in wheelhouse:"
-            ls -la wheelhouse/*.whl
-          else
-            echo "ERROR: No wheel found to repair!"
-            exit 1
-          fi
-
-      # ==================== Smoke Test ====================
       - name: Smoke test pycolmap wheel (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -772,6 +412,7 @@ jobs:
           import pycolmap
 
           assert len(pycolmap._CUDA_DLL_DIRECTORIES) >= 10
+          assert len(pycolmap._CUDA_LIBRARY_HANDLES) >= 10
 
           def package_root(module_name):
               module = importlib.import_module(module_name)
@@ -812,45 +453,6 @@ jobs:
             exit 1
           }
           Write-Host "pycolmap smoke test passed" -ForegroundColor Green
-
-      - name: Smoke test pycolmap wheel (Linux)
-        if: runner.os == 'Linux'
-        working-directory: third_party/colmap-for-pycolmap
-        run: |
-          WHEEL=$(ls wheelhouse/pycolmap-*.whl | head -n 1)
-
-          if [ -z "$WHEEL" ]; then
-            echo "ERROR: No wheel found in wheelhouse/"
-            exit 1
-          fi
-
-          echo "Testing wheel: $WHEEL"
-
-          # Install the wheel
-          pip install "$WHEEL" --force-reinstall --no-cache-dir
-
-          # Test import and version
-          echo "Testing pycolmap import..."
-          python -c "import pycolmap; print(f'pycolmap version: {pycolmap.__version__}')"
-          python - <<'PY'
-          import pycolmap
-
-          assert (
-              pycolmap.BundleAdjustmentBackend.CASPAR
-              == pycolmap.BundleAdjustmentBackend("CASPAR")
-          )
-          opts = pycolmap.BundleAdjustmentOptions()
-          opts.backend = pycolmap.BundleAdjustmentBackend.CASPAR
-          assert isinstance(opts.caspar, pycolmap.CasparBundleAdjustmentOptions)
-          opts.caspar.gpu_index = "0"
-          print("pycolmap Caspar API smoke test passed")
-          PY
-
-          if [ $? -ne 0 ]; then
-            echo "ERROR: pycolmap import failed"
-            exit 1
-          fi
-          echo "pycolmap smoke test passed"
 
       # ==================== Artifacts ====================
       - name: Validate exact wheel filename and metadata
@@ -901,67 +503,10 @@ jobs:
           print(f"Validated {wheel.name} and its METADATA version")
           '@ | python -
 
-      - name: Prepare artifact name
-        id: artifact-name
-        shell: bash
-        run: |
-          CUDA_MAJOR=$(echo "${{ matrix.cuda_version }}" | cut -d. -f1)
-          CUDA_MINOR=$(echo "${{ matrix.cuda_version }}" | cut -d. -f2)
-          if [ "${{ matrix.bundle_cuda }}" = "true" ] && [ "${{ matrix.cudss }}" = "true" ]; then
-            CUDA_SUFFIX="cu${CUDA_MAJOR}${CUDA_MINOR}-bundled-cuDSS"
-          elif [ "${{ matrix.bundle_cuda }}" = "true" ]; then
-            CUDA_SUFFIX="cu${CUDA_MAJOR}${CUDA_MINOR}-bundled"
-          elif [ "${{ matrix.cudss }}" = "true" ]; then
-            CUDA_SUFFIX="CUDA-cuDSS"
-          elif [ "${{ matrix.cuda }}" = "true" ] && [ "$CUDA_MAJOR" != "12" ]; then
-            CUDA_SUFFIX="cu${CUDA_MAJOR}${CUDA_MINOR}"
-          elif [ "${{ matrix.cuda }}" = "true" ]; then
-            CUDA_SUFFIX="CUDA"
-          else
-            CUDA_SUFFIX="CPU"
-          fi
-          PYVER=$(echo "${{ matrix.python-version }}" | tr -d '.')
-          echo "name=pycolmap-py${PYVER}-${{ matrix.os }}-${CUDA_SUFFIX}" >> $GITHUB_OUTPUT
-
-      - name: Upload wheel to release
-        if: inputs.release_tag != ''
-        shell: bash
-        working-directory: third_party/colmap-for-pycolmap
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          for whl in wheelhouse/*.whl; do
-            if [ -f "$whl" ]; then
-              echo "Uploading $(basename "$whl") to release ${{ inputs.release_tag }}..."
-              gh release upload "${{ inputs.release_tag }}" "$whl" --clobber --repo "${{ github.repository }}"
-            fi
-          done
-
-      - name: Generate + upload build metadata
-        if: inputs.release_tag != ''
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          PY=python3; command -v python3 >/dev/null 2>&1 || PY=python
-          OUT="${{ steps.artifact-name.outputs.name }}.build_info.json"
-          "$PY" scripts/emit_build_info.py \
-            --output "$OUT" \
-            --colmap-dir third_party/colmap-for-pycolmap \
-            --os "${{ matrix.os }}" \
-            --variant "${{ steps.artifact-name.outputs.name }}" \
-            --cuda-version "${{ matrix.cuda && matrix.cuda_version || 'none' }}" \
-            --cudss-version "${{ matrix.cudss && '0.7.1.4' || '' }}" \
-            --caspar "${{ matrix.cuda }}" \
-            --cudss "${{ matrix.cudss }}" \
-            --gui false
-          gh release upload "${{ inputs.release_tag }}" "$OUT" --clobber --repo "${{ github.repository }}"
-
       - name: Upload wheel artifact
-        if: inputs.release_tag == ''
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.artifact-name.outputs.name }}
+          name: pycolmap-windows-cp312-cu128
           path: third_party/colmap-for-pycolmap/wheelhouse/*.whl
           retention-days: 7
           if-no-files-found: error

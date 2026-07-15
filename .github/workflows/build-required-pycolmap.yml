@@ -29,21 +29,12 @@ jobs:
 
   linux-wheels:
     needs: validate-release-tag
-    uses: ./.github/workflows/build-custom-pycolmap.yml
-    with:
-      python_version: '3.12'
-      cuda_version: '12.8'
-      manylinux_tag: manylinux_2_34_x86_64
-      cudss: true
-      bundle_cuda: false
-      release_tag: ''
+    uses: ./.github/workflows/build-linux-pycolmap.yml
     secrets: inherit
 
   windows-wheel:
     needs: validate-release-tag
-    uses: ./.github/workflows/build-pycolmap.yml
-    with:
-      release_tag: ''
+    uses: ./.github/workflows/build-windows-pycolmap.yml
     secrets: inherit
 
   publish-release:
