@@ -578,13 +578,28 @@ if external_runtime:
     assert "libcudnn_ops.so.9" in loaded_libraries
     if os.environ["WITH_CUDSS"] == "true":
         cudss = importlib.import_module("nvidia.cu12")
-        cudss_root = (
-            Path(cudss.__file__).parent
+        cudss_package_roots = (
+            [Path(cudss.__file__).parent]
             if getattr(cudss, "__file__", None)
-            else Path(next(iter(cudss.__path__)))
+            else [Path(path) for path in cudss.__path__]
         )
-        cudss_library = cudss_root / "lib" / "libcudss.so.0"
-        assert str(cudss_library) in loaded_libraries
+        cudss_package_lib_dirs = {
+            (root / "lib").resolve()
+            for root in cudss_package_roots
+            if (root / "lib").is_dir()
+        }
+        cudss_handle_paths = [
+            Path(handle._name).resolve()
+            for handle in pycolmap._CUDA_LIBRARY_HANDLES
+            if Path(handle._name).name == "libcudss.so.0"
+        ]
+        assert importlib.metadata.version("nvidia-cudss-cu12") == "0.7.1.4"
+        assert len(cudss_handle_paths) == 1, cudss_handle_paths
+        assert cudss_handle_paths[0].is_file(), cudss_handle_paths[0]
+        assert cudss_handle_paths[0].parent in cudss_package_lib_dirs, (
+            cudss_handle_paths,
+            cudss_package_lib_dirs,
+        )
 
 print(f"Smoke test passed for pycolmap {pycolmap.__version__}")
 PY

@@ -160,6 +160,11 @@ class NvidiaRuntimePreloadContractTests(unittest.TestCase):
         self.assertIn("env -u LD_LIBRARY_PATH python - <<'PY'", linux)
         self.assertIn('importlib.import_module("nvidia.cu12")', linux)
         self.assertIn('"libnvrtc.alt.so.12" not in loaded_names', linux)
+        self.assertIn('version("nvidia-cudss-cu12") == "0.7.1.4"', linux)
+        self.assertIn("cudss_handle_paths[0].parent in cudss_package_lib_dirs", linux)
+        self.assertNotIn(
+            "assert str(cudss_library) in loaded_libraries", linux
+        )
         self.assertIn(
             'env -u LD_LIBRARY_PATH HOME="$ALIKED_TEST_HOME"', linux
         )
