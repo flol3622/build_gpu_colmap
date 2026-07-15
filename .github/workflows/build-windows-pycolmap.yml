@@ -362,6 +362,17 @@ jobs:
           if ($wheel) {
             Write-Host "Repairing wheel: $($wheel.Name)"
             Write-Host "Search paths: $($addPaths -join ' ')"
+            $providerDlls = @(
+              "onnxruntime_providers_shared.dll",
+              "onnxruntime_providers_cuda.dll"
+            )
+            foreach ($providerDll in $providerDlls) {
+              if (-not (Test-Path (Join-Path $colmapBin $providerDll))) {
+                Write-Host "ERROR: Missing ONNX Runtime provider $providerDll in $colmapBin" -ForegroundColor Red
+                exit 1
+              }
+            }
+            $providerDllList = $providerDlls -join ";"
             $excludeDlls = @(
               "cudart64_12.dll",
               "cublas*.dll",
@@ -375,7 +386,11 @@ jobs:
               "cudnn*.dll",
               "cudss*.dll"
             ) -join ";"
-            python -m delvewheel repair -v @addPaths --exclude $excludeDlls -w wheelhouse $wheel.FullName
+            python -m delvewheel repair -v @addPaths `
+              --include $providerDllList `
+              --no-mangle $providerDllList `
+              --exclude $excludeDlls `
+              -w wheelhouse $wheel.FullName
 
             # Remove original wheel, keep repaired one
             # delvewheel creates a new wheel with the same name
@@ -399,11 +414,41 @@ jobs:
           Write-Host "Testing wheel: $($wheel.Name)"
 
           # Install the wheel
-          python -m pip install $wheel.FullName --force-reinstall --no-cache-dir
+          $python = (Get-Command python).Source
+          & $python -m pip install $wheel.FullName --force-reinstall --no-cache-dir
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "ERROR: Failed to install repaired pycolmap wheel" -ForegroundColor Red
+            exit 1
+          }
+
+          # Prove the installed wheel does not fall back to the build toolkit.
+          $blockedRoots = @(
+            "C:\Program Files\NVIDIA GPU Computing Toolkit",
+            "C:\cudss",
+            "${{ github.workspace }}\build"
+          )
+          $cleanPath = @()
+          foreach ($entry in ($env:PATH -split ";")) {
+            $blocked = $false
+            foreach ($root in $blockedRoots) {
+              if ($entry.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $blocked = $true
+                break
+              }
+            }
+            if (-not $blocked) {
+              $cleanPath += $entry
+            }
+          }
+          $env:PATH = $cleanPath -join ";"
+          Remove-Item Env:CUDA_PATH -ErrorAction SilentlyContinue
+          Remove-Item Env:CUDA_PATH_V12_8 -ErrorAction SilentlyContinue
+          Remove-Item Env:CUDA_PATH_VX_Y -ErrorAction SilentlyContinue
+          Remove-Item Env:CUDSS_ROOT -ErrorAction SilentlyContinue
+          Remove-Item Env:cudss_DIR -ErrorAction SilentlyContinue
 
           # Test import and version
           Write-Host "Testing pycolmap import..."
-          python -c "import pycolmap; print(f'pycolmap version: {pycolmap.__version__}')"
           @'
           import ctypes
           import importlib
@@ -412,7 +457,16 @@ jobs:
           import pycolmap
 
           assert len(pycolmap._CUDA_DLL_DIRECTORIES) >= 10
-          assert len(pycolmap._CUDA_LIBRARY_HANDLES) >= 10
+          assert len(pycolmap._CUDA_LIBRARY_HANDLES) >= 19
+
+          loaded_names = {
+              Path(handle._name).name.lower()
+              for handle in pycolmap._CUDA_LIBRARY_HANDLES
+          }
+          assert "cudss64_0.dll" in loaded_names, loaded_names
+          assert "nvjitlink_120_0.dll" in loaded_names, loaded_names
+          assert "nvrtc64_120_0.dll" in loaded_names, loaded_names
+          assert "nvrtc64_120_0.alt.dll" not in loaded_names, loaded_names
 
           def package_root(module_name):
               module = importlib.import_module(module_name)
@@ -427,9 +481,17 @@ jobs:
           assert cudnn_ops.cudnnCreateFilterDescriptor
 
           cudss_path = next(
-              (package_root("nvidia.cudss") / "bin").glob("cudss64_*.dll")
+              (package_root("nvidia.cu12") / "bin").glob("cudss64_*.dll")
           )
           ctypes.WinDLL(str(cudss_path))
+
+          libs_dir = Path(pycolmap.__file__).resolve().parent.parent / "pycolmap.libs"
+          for provider_name in (
+              "onnxruntime_providers_shared.dll",
+              "onnxruntime_providers_cuda.dll",
+          ):
+              provider = libs_dir / provider_name
+              assert provider.is_file(), f"missing ONNX Runtime provider: {provider}"
 
           assert (
               pycolmap.BundleAdjustmentBackend.CASPAR
@@ -439,17 +501,21 @@ jobs:
           opts.backend = pycolmap.BundleAdjustmentBackend.CASPAR
           assert isinstance(opts.caspar, pycolmap.CasparBundleAdjustmentOptions)
           opts.caspar.gpu_index = "0"
-          print("pycolmap Caspar API smoke test passed")
-          '@ | python -
+          print(f"pycolmap {pycolmap.__version__} clean-install smoke test passed")
+          '@ | & $python -
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "ERROR: pycolmap clean-install smoke test failed" -ForegroundColor Red
+            exit 1
+          }
 
           $alikedHome = Join-Path $env:RUNNER_TEMP "pycolmap-aliked-download-test"
           Remove-Item -Recurse -Force $alikedHome -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $alikedHome | Out-Null
           $env:USERPROFILE = $alikedHome
-          python "$env:GITHUB_WORKSPACE/.github/scripts/validate_aliked_download.py"
+          & $python "$env:GITHUB_WORKSPACE/.github/scripts/validate_aliked_download.py"
 
           if ($LASTEXITCODE -ne 0) {
-            Write-Host "ERROR: pycolmap import failed" -ForegroundColor Red
+            Write-Host "ERROR: ALIKED default-model download test failed" -ForegroundColor Red
             exit 1
           }
           Write-Host "pycolmap smoke test passed" -ForegroundColor Green
@@ -500,6 +566,12 @@ jobs:
               and any(token in Path(name).name.lower() for token in forbidden)
           ]
           assert not embedded, f"NVIDIA DLLs remain embedded: {embedded}"
+          for provider_name in (
+              "onnxruntime_providers_shared.dll",
+              "onnxruntime_providers_cuda.dll",
+          ):
+              matches = [name for name in names if Path(name).name == provider_name]
+              assert len(matches) == 1, (provider_name, matches)
           print(f"Validated {wheel.name} and its METADATA version")
           '@ | python -
 

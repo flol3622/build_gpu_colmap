@@ -1,16 +1,16 @@
 diff --git a/python/pycolmap/__init__.py b/python/pycolmap/__init__.py
-index 8b53c173..efdd7ff7 100644
+index 8b53c173..4acb3867 100644
 --- a/python/pycolmap/__init__.py
 +++ b/python/pycolmap/__init__.py
-@@ -1,6 +1,7 @@
- import contextlib
+@@ -1,6 +1,6 @@
+-import contextlib
  import ctypes
  import importlib
 +import os
  import platform
  import textwrap
  from pathlib import Path
-@@ -9,40 +10,122 @@ from typing import TYPE_CHECKING
+@@ -9,40 +9,144 @@ from typing import TYPE_CHECKING
  from .utils import import_module_symbols
  
  
@@ -24,14 +24,17 @@ index 8b53c173..efdd7ff7 100644
 +    """Return native-library directories from an NVIDIA Python package."""
      try:
          module = importlib.import_module(module_name)
-     except ImportError:
+-    except ImportError:
 -        return
-+        return ()
++    except ImportError as error:
++        raise RuntimeError(
++            f"Cannot import required NVIDIA runtime package {module_name}"
++        ) from error
 +
 +    if module_file_path := getattr(module, "__file__", None):
-+        package_dir = Path(module_file_path).parent
++        package_dirs = (Path(module_file_path).parent,)
 +    elif paths := getattr(module, "__path__", None):
-+        package_dir = Path(list(paths)[0])
++        package_dirs = tuple(Path(path) for path in paths)
      else:
 -        # TODO: update the logic to handle CUDA 13,
 -        # using as reference https://github.com/pytorch/pytorch/pull/163661.
@@ -48,47 +51,65 @@ index 8b53c173..efdd7ff7 100644
 -        if lib_path := next((lib_dir / "lib").glob(lib_name), None):
 -            with contextlib.suppress(OSError):
 -                ctypes.CDLL(str(lib_path))
-+        return ()
-+    return tuple(
++        package_dirs = ()
++    library_dirs = tuple(
 +        directory
++        for package_dir in package_dirs
 +        for name in ("lib", "bin")
 +        if (directory := package_dir / name).is_dir()
++    )
++    if not library_dirs:
++        raise RuntimeError(
++            f"NVIDIA runtime package {module_name} has no native-library directory"
++        )
++    return library_dirs
++
++
++def _cuda_package_library(module_name: str, pattern: str):
++    """Resolve one required native library from an NVIDIA Python package."""
++    for library_dir in _cuda_package_library_dirs(module_name):
++        if library := next(iter(sorted(library_dir.glob(pattern))), None):
++            return library
++    raise RuntimeError(
++        f"NVIDIA runtime package {module_name} has no library matching {pattern}"
 +    )
 +
 +
 +def _preload_linux_package(module_name: str, patterns: tuple[str, ...]):
 +    """Preload one copy of each requested shared library with global symbols."""
-+    for library_dir in _cuda_package_library_dirs(module_name):
-+        for pattern in patterns:
-+            if library := next(iter(sorted(library_dir.glob(pattern))), None):
-+                try:
-+                    handle = ctypes.CDLL(str(library), mode=ctypes.RTLD_GLOBAL)
-+                except OSError as error:
-+                    raise RuntimeError(
-+                        f"Cannot load NVIDIA runtime library {library}: {error}"
-+                    ) from error
-+                _CUDA_LIBRARY_HANDLES.append(handle)
++    for pattern in patterns:
++        library = _cuda_package_library(module_name, pattern)
++        try:
++            handle = ctypes.CDLL(str(library), mode=ctypes.RTLD_GLOBAL)
++        except OSError as error:
++            raise RuntimeError(
++                f"Cannot load NVIDIA runtime library {library}: {error}"
++            ) from error
++        _CUDA_LIBRARY_HANDLES.append(handle)
 +
 +
 +def _register_windows_package(module_name: str):
 +    """Keep NVIDIA package DLL directories in the process search path."""
 +    for library_dir in _cuda_package_library_dirs(module_name):
-+        with contextlib.suppress(OSError):
++        try:
 +            _CUDA_DLL_DIRECTORIES.append(os.add_dll_directory(library_dir))
++        except OSError as error:
++            raise RuntimeError(
++                f"Cannot register NVIDIA runtime directory {library_dir}: {error}"
++            ) from error
 +
 +
 +def _preload_windows_package(module_name: str, patterns: tuple[str, ...]):
 +    """Load NVIDIA DLLs explicitly and retain their process-wide handles."""
-+    for library_dir in _cuda_package_library_dirs(module_name):
-+        for pattern in patterns:
-+            if library := next(iter(sorted(library_dir.glob(pattern))), None):
-+                try:
-+                    handle = ctypes.WinDLL(str(library))
-+                except OSError as error:
-+                    raise RuntimeError(
-+                        f"Cannot load NVIDIA runtime DLL {library}: {error}"
-+                    ) from error
-+                _CUDA_LIBRARY_HANDLES.append(handle)
++    for pattern in patterns:
++        library = _cuda_package_library(module_name, pattern)
++        try:
++            handle = ctypes.WinDLL(str(library))
++        except OSError as error:
++            raise RuntimeError(
++                f"Cannot load NVIDIA runtime DLL {library}: {error}"
++            ) from error
++        _CUDA_LIBRARY_HANDLES.append(handle)
  
  
  def _preload_cuda_deps():
@@ -97,11 +118,11 @@ index 8b53c173..efdd7ff7 100644
 +    """Make CUDA dependencies installed as Python packages loadable."""
 +    packages = (
 +        ("nvidia.cuda_runtime", ("libcudart.so.*[0-9]",), ("cudart64_12.dll",)),
-+        ("nvidia.nvjitlink", ("libnvJitLink.so.*[0-9]",), ("nvJitLink_12.dll",)),
++        ("nvidia.nvjitlink", ("libnvJitLink.so.*[0-9]",), ("nvJitLink_*.dll",)),
 +        (
 +            "nvidia.cuda_nvrtc",
-+            ("libnvrtc.so.*[0-9]",),
-+            ("nvrtc-builtins64_*.dll", "nvrtc64_*.dll"),
++            ("libnvrtc-builtins.so.*[0-9]", "libnvrtc.so.*[0-9]"),
++            ("nvrtc-builtins64_*.dll", "nvrtc64_*_0.dll"),
 +        ),
 +        (
 +            "nvidia.cublas",
@@ -112,7 +133,7 @@ index 8b53c173..efdd7ff7 100644
 +        ("nvidia.curand", ("libcurand.so.*[0-9]",), ("curand64_10.dll",)),
 +        ("nvidia.cusparse", ("libcusparse.so.*[0-9]",), ("cusparse64_12.dll",)),
 +        ("nvidia.cusolver", ("libcusolver.so.*[0-9]",), ("cusolver64_11.dll",)),
-+        ("nvidia.nvtx", ("libnvToolsExt.so.*[0-9]",), ("nvToolsExt64_1.dll",)),
++        ("nvidia.nvtx", ("libnvToolsExt.so.*[0-9]",), ()),
 +        (
 +            "nvidia.cudnn",
 +            (
@@ -136,7 +157,7 @@ index 8b53c173..efdd7ff7 100644
 +                "cudnn_engines_runtime_compiled64_9.dll",
 +            ),
 +        ),
-+        ("nvidia.cudss", ("libcudss.so.0",), ("cudss64_0.dll",)),
++        ("nvidia.cu12", ("libcudss.so.0",), ("cudss64_0.dll",)),
 +    )
 +
 +    system = platform.system()
@@ -144,10 +165,12 @@ index 8b53c173..efdd7ff7 100644
 +        for module_name, linux_patterns, _ in packages:
 +            _preload_linux_package(module_name, linux_patterns)
 +    elif system == "Windows":
-+        for module_name, _, _ in packages:
-+            _register_windows_package(module_name)
 +        for module_name, _, windows_patterns in packages:
-+            _preload_windows_package(module_name, windows_patterns)
++            if windows_patterns:
++                _register_windows_package(module_name)
++        for module_name, _, windows_patterns in packages:
++            if windows_patterns:
++                _preload_windows_package(module_name, windows_patterns)
 +    else:
          return
 -    cuda_libs = {

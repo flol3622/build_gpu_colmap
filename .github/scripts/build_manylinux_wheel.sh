@@ -466,7 +466,7 @@ fi
 
 auditwheel show "$REPAIRED_WHEEL"
 python -m pip install --force-reinstall --no-cache-dir "$REPAIRED_WHEEL"
-python - <<'PY'
+env -u LD_LIBRARY_PATH python - <<'PY'
 import importlib
 import importlib.metadata
 import os
@@ -474,6 +474,16 @@ import subprocess
 from pathlib import Path
 
 import pycolmap
+
+assert len(pycolmap._CUDA_LIBRARY_HANDLES) >= 20
+loaded_names = {
+    Path(handle._name).name for handle in pycolmap._CUDA_LIBRARY_HANDLES
+}
+assert "libcudss.so.0" in loaded_names, loaded_names
+assert "libnvJitLink.so.12" in loaded_names, loaded_names
+assert "libnvrtc-builtins.so.12.8" in loaded_names, loaded_names
+assert "libnvrtc.so.12" in loaded_names, loaded_names
+assert "libnvrtc.alt.so.12" not in loaded_names, loaded_names
 
 assert pycolmap.__version__ == os.environ["BASE_VERSION"]
 assert importlib.metadata.version("pycolmap") == os.environ["WHEEL_VERSION"]
@@ -495,7 +505,7 @@ nvidia_modules = (
     "nvidia.cusolver",
     "nvidia.nvtx",
     "nvidia.cudnn",
-    "nvidia.cudss",
+    "nvidia.cu12",
 )
 nvidia_lib_dirs = []
 for module_name in nvidia_modules:
@@ -567,13 +577,21 @@ if external_runtime:
     loaded_libraries = Path("/proc/self/maps").read_text()
     assert "libcudnn_ops.so.9" in loaded_libraries
     if os.environ["WITH_CUDSS"] == "true":
-        assert "libcudss.so.0" in loaded_libraries
+        cudss = importlib.import_module("nvidia.cu12")
+        cudss_root = (
+            Path(cudss.__file__).parent
+            if getattr(cudss, "__file__", None)
+            else Path(next(iter(cudss.__path__)))
+        )
+        cudss_library = cudss_root / "lib" / "libcudss.so.0"
+        assert str(cudss_library) in loaded_libraries
 
 print(f"Smoke test passed for pycolmap {pycolmap.__version__}")
 PY
 
 ALIKED_TEST_HOME="$(mktemp -d)"
-HOME="$ALIKED_TEST_HOME" python .github/scripts/validate_aliked_download.py
+env -u LD_LIBRARY_PATH HOME="$ALIKED_TEST_HOME" \
+  python .github/scripts/validate_aliked_download.py
 rm -rf "$ALIKED_TEST_HOME"
 
 echo "Built and validated: $REPAIRED_WHEEL"
