@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Build one self-contained pycolmap wheel against an actual manylinux baseline.
+# Build one pycolmap wheel against an actual manylinux baseline.
 # This script is intended to run as root inside a PyPA manylinux container.
 
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 CUDA_VERSION="${CUDA_VERSION:-12.8}"
 MANYLINUX_TAG="${MANYLINUX_TAG:-manylinux_2_34_x86_64}"
-BUNDLE_CUDA="${BUNDLE_CUDA:-true}"
+BUNDLE_CUDA="${BUNDLE_CUDA:-false}"
 WITH_CUDSS="${WITH_CUDSS:-true}"
 CUDSS_VERSION="${CUDSS_VERSION:-0.7.1.4}"
 # COLMAP 4.1.0 fetches ONNX Runtime 1.24.4's CUDA 12 provider. Its CUDA EP uses
@@ -55,6 +55,7 @@ as_bool() {
 
 BUNDLE_CUDA="$(as_bool "$BUNDLE_CUDA")"
 WITH_CUDSS="$(as_bool "$WITH_CUDSS")"
+export BUNDLE_CUDA WITH_CUDSS
 
 case "$PYTHON_VERSION" in
   3.10|3.11|3.12|3.13|3.14) ;;
@@ -65,6 +66,9 @@ case "$CUDA_VERSION" in
   12.8|13.0|13.1) ;;
   *) die "Unsupported CUDA version: $CUDA_VERSION" ;;
 esac
+if [[ "$BUNDLE_CUDA" == false && "$CUDA_VERSION" != 12.8 ]]; then
+  die "Automatic NVIDIA runtime dependencies are currently pinned for CUDA 12.8; set BUNDLE_CUDA=true for CUDA $CUDA_VERSION"
+fi
 
 case "$MANYLINUX_TAG" in
   manylinux_2_28_x86_64) EXPECTED_GLIBC="2.28" ;;
@@ -115,10 +119,14 @@ dnf config-manager --add-repo \
   "https://developer.download.nvidia.com/compute/cuda/repos/${CUDA_REPO_DISTRO}/x86_64/cuda-${CUDA_REPO_DISTRO}.repo"
 dnf clean all
 ONNXRUNTIME_CUDA_PACKAGES=()
+CUDNN_PACKAGES=()
 if [[ "$CUDA_MAJOR" -ge 13 ]]; then
   # ONNX Runtime 1.24.4's published Linux GPU provider is linked against the
   # CUDA 12 ABI even when the surrounding COLMAP build targets CUDA 13.
   ONNXRUNTIME_CUDA_PACKAGES+=(cuda-libraries-12-8)
+fi
+if [[ "$BUNDLE_CUDA" == true ]]; then
+  CUDNN_PACKAGES+=("libcudnn9-cuda-12-${ONNXRUNTIME_CUDNN_VERSION}-1")
 fi
 dnf install -y \
   autoconf automake binutils bison curl flex git libtool make patch \
@@ -126,7 +134,7 @@ dnf install -y \
   "cuda-compiler-${CUDA_PACKAGE_SUFFIX}" \
   "cuda-libraries-devel-${CUDA_PACKAGE_SUFFIX}" \
   "cuda-nvtx-${CUDA_PACKAGE_SUFFIX}" \
-  "libcudnn9-cuda-12-${ONNXRUNTIME_CUDNN_VERSION}-1" \
+  "${CUDNN_PACKAGES[@]}" \
   "${ONNXRUNTIME_CUDA_PACKAGES[@]}"
 dnf clean all
 
@@ -195,16 +203,28 @@ else
   die "The pycolmap Caspar bindings patch cannot be applied"
 fi
 
+PATCH_FILE=/workspace/patches/pycolmap-nvidia-runtime-preload.patch
+if git -C third_party/colmap-for-pycolmap apply --check "$PATCH_FILE"; then
+  git -C third_party/colmap-for-pycolmap apply "$PATCH_FILE"
+elif git -C third_party/colmap-for-pycolmap apply --reverse --check "$PATCH_FILE"; then
+  echo "pycolmap NVIDIA runtime preloader patch is already applied"
+elif git -C third_party/colmap-for-pycolmap grep -q \
+  "nvidia.cudnn" -- python/pycolmap/__init__.py; then
+  echo "Upstream already preloads NVIDIA runtime packages"
+else
+  die "The pycolmap NVIDIA runtime preloader patch cannot be applied"
+fi
+
 if [[ "$BUNDLE_CUDA" == true && "$WITH_CUDSS" == true ]]; then
   VERSION_SUFFIX="+cu${CUDA_COMPACT}.bundled.cudss"
 elif [[ "$BUNDLE_CUDA" == true ]]; then
   VERSION_SUFFIX="+cu${CUDA_COMPACT}.bundled"
 elif [[ "$WITH_CUDSS" == true ]]; then
-  VERSION_SUFFIX="+cuda.cudss"
+  VERSION_SUFFIX="+cu${CUDA_COMPACT}.pipcuda.cudss"
 elif [[ "$CUDA_MAJOR" != 12 ]]; then
-  VERSION_SUFFIX="+cu${CUDA_COMPACT}"
+  VERSION_SUFFIX="+cu${CUDA_COMPACT}.pipcuda"
 else
-  VERSION_SUFFIX="+cuda"
+  VERSION_SUFFIX="+cu${CUDA_COMPACT}.pipcuda"
 fi
 
 BASE_VERSION="$(python - <<'PY'
@@ -276,21 +296,17 @@ fi
 # The top-level ExternalProject patch deliberately restores the upstream
 # release version while building COLMAP. Stamp the wheel metadata afterwards,
 # immediately before invoking the isolated Python wheel build.
-python - <<'PY'
-import os, pathlib, re
-path = pathlib.Path("third_party/colmap-for-pycolmap/pyproject.toml")
-text = path.read_text()
-updated, count = re.subn(
-    r'^version = "[^"]+"',
-    f'version = "{os.environ["WHEEL_VERSION"]}"',
-    text,
-    count=1,
-    flags=re.MULTILINE,
+STAMP_ARGS=(
+  third_party/colmap-for-pycolmap/pyproject.toml
+  --version "$WHEEL_VERSION"
 )
-if count != 1:
-    raise SystemExit("Could not stamp the custom pycolmap version")
-path.write_text(updated)
-PY
+if [[ "$BUNDLE_CUDA" == false ]]; then
+  STAMP_ARGS+=(--external-nvidia-runtime)
+fi
+if [[ "$WITH_CUDSS" == true ]]; then
+  STAMP_ARGS+=(--with-cudss)
+fi
+python .github/scripts/stamp_pycolmap_wheel.py "${STAMP_ARGS[@]}"
 
 pushd third_party/colmap-for-pycolmap >/dev/null
 python -m pip wheel . --no-deps -w "$WHEELHOUSE/raw" \
@@ -378,10 +394,12 @@ if [[ "$BUNDLE_CUDA" == false ]]; then
     --exclude libcudart.so.12 --exclude libcudart.so.13
     --exclude libcublas.so.12 --exclude libcublas.so.13
     --exclude libcublasLt.so.12 --exclude libcublasLt.so.13
-    --exclude libcufft.so.11 --exclude libcurand.so.10
-    --exclude libcusolver.so.11 --exclude libcusparse.so.12
+    --exclude libcufft.so.11 --exclude libcufftw.so.11 --exclude libcurand.so.10
+    --exclude libcusolver.so.11 --exclude libcusolverMg.so.11
+    --exclude libcusparse.so.12
     --exclude libnvJitLink.so.12 --exclude libnvJitLink.so.13
     --exclude libnvrtc.so.12 --exclude libnvrtc.so.13
+    --exclude libnvToolsExt.so.1
     --exclude libcudss.so.0
   )
   for library in "${CUDNN_RUNTIME_NAMES[@]}"; do
@@ -402,6 +420,27 @@ EXPECTED_NAME="pycolmap-${WHEEL_VERSION}-cp${PYTHON_TAG}-cp${PYTHON_TAG}-${MANYL
   die "Unexpected wheel name: $(basename "$REPAIRED_WHEEL"); expected $EXPECTED_NAME"
 unzip -p "$REPAIRED_WHEEL" '*dist-info/METADATA' | \
   grep -Fx "Version: $WHEEL_VERSION" >/dev/null || die "Wheel METADATA has the wrong version"
+
+if [[ "$BUNDLE_CUDA" == false ]]; then
+  if unzip -Z1 "$REPAIRED_WHEEL" | grep -E \
+    '/lib(cudart|cublas|cufft|curand|cusolver|cusparse|nvJitLink|nvrtc|nvToolsExt|cudnn|cudss)[^/]*\.so' >/dev/null; then
+    die "External-runtime wheel still contains an NVIDIA runtime library"
+  fi
+  for requirement in \
+    nvidia-cuda-runtime-cu12 nvidia-cublas-cu12 nvidia-cufft-cu12 \
+    nvidia-curand-cu12 nvidia-cusolver-cu12 nvidia-cusparse-cu12 \
+    nvidia-nvjitlink-cu12 nvidia-cuda-nvrtc-cu12 nvidia-nvtx-cu12 \
+    nvidia-cudnn-cu12; do
+    unzip -p "$REPAIRED_WHEEL" '*dist-info/METADATA' | \
+      grep -F "Requires-Dist: $requirement" >/dev/null || \
+      die "Wheel METADATA is missing $requirement"
+  done
+  if [[ "$WITH_CUDSS" == true ]]; then
+    unzip -p "$REPAIRED_WHEEL" '*dist-info/METADATA' | \
+      grep -F "Requires-Dist: nvidia-cudss-cu12" >/dev/null || \
+      die "Wheel METADATA is missing nvidia-cudss-cu12"
+  fi
+fi
 
 for library in \
   libonnxruntime_providers_shared.so \
@@ -426,8 +465,9 @@ if [[ "$WITH_CUDSS" == true && "$BUNDLE_CUDA" == true ]]; then
 fi
 
 auditwheel show "$REPAIRED_WHEEL"
-python -m pip install --force-reinstall "$REPAIRED_WHEEL"
+python -m pip install --force-reinstall --no-cache-dir "$REPAIRED_WHEEL"
 python - <<'PY'
+import importlib
 import importlib.metadata
 import os
 import subprocess
@@ -443,6 +483,42 @@ options.backend = pycolmap.BundleAdjustmentBackend.CASPAR
 assert isinstance(options.caspar, pycolmap.CasparBundleAdjustmentOptions)
 
 libs_dir = Path(pycolmap.__file__).resolve().parent.parent / "pycolmap.libs"
+external_runtime = os.environ["BUNDLE_CUDA"] == "false"
+nvidia_modules = (
+    "nvidia.cuda_runtime",
+    "nvidia.nvjitlink",
+    "nvidia.cuda_nvrtc",
+    "nvidia.cublas",
+    "nvidia.cufft",
+    "nvidia.curand",
+    "nvidia.cusparse",
+    "nvidia.cusolver",
+    "nvidia.nvtx",
+    "nvidia.cudnn",
+    "nvidia.cudss",
+)
+nvidia_lib_dirs = []
+for module_name in nvidia_modules:
+    try:
+        module = importlib.import_module(module_name)
+    except ImportError:
+        continue
+    module_paths = (
+        [Path(module.__file__).parent]
+        if getattr(module, "__file__", None)
+        else [Path(path) for path in module.__path__]
+    )
+    nvidia_lib_dirs.extend(
+        directory
+        for module_path in module_paths
+        for name in ("lib", "bin")
+        if (directory := module_path / name).is_dir()
+    )
+
+ldd_environment = os.environ.copy()
+ldd_environment["LD_LIBRARY_PATH"] = os.pathsep.join(
+    [*(str(path) for path in nvidia_lib_dirs), ldd_environment.get("LD_LIBRARY_PATH", "")]
+)
 for name in (
     "libonnxruntime_providers_shared.so",
     "libonnxruntime_providers_cuda.so",
@@ -453,17 +529,29 @@ for name in (
     # initializers enter CUDA and can segfault without a display driver. ldd
     # resolves the complete DT_NEEDED graph without running those initializers.
     result = subprocess.run(
-        ["ldd", str(provider)], capture_output=True, text=True, check=False
+        ["ldd", str(provider)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=ldd_environment,
     )
     dependencies = result.stdout + result.stderr
     assert result.returncode == 0, dependencies
     assert "not found" not in dependencies, dependencies
 
 # cuDNN loads its split libraries with dlopen(), so ldd cannot prove that the
-# legacy API used by ONNX Runtime is present. Check the exact symbol whose
-# absence aborts ALIKED GPU extraction without initializing CUDA on this
-# driverless CI runner.
-ops_library = libs_dir / "libcudnn_ops.so.9"
+# legacy API used by ONNX Runtime is present. Check the exact external-package
+# symbol whose absence aborts ALIKED GPU extraction.
+if external_runtime:
+    cudnn = importlib.import_module("nvidia.cudnn")
+    cudnn_root = (
+        Path(cudnn.__file__).parent
+        if getattr(cudnn, "__file__", None)
+        else Path(next(iter(cudnn.__path__)))
+    )
+    ops_library = cudnn_root / "lib" / "libcudnn_ops.so.9"
+else:
+    ops_library = libs_dir / "libcudnn_ops.so.9"
 assert ops_library.is_file(), f"missing cuDNN ops library: {ops_library}"
 result = subprocess.run(
     ["nm", "-D", "--defined-only", str(ops_library)],
@@ -474,6 +562,12 @@ result = subprocess.run(
 symbols = result.stdout + result.stderr
 assert result.returncode == 0, symbols
 assert "cudnnCreateFilterDescriptor" in symbols, symbols
+
+if external_runtime:
+    loaded_libraries = Path("/proc/self/maps").read_text()
+    assert "libcudnn_ops.so.9" in loaded_libraries
+    if os.environ["WITH_CUDSS"] == "true":
+        assert "libcudss.so.0" in loaded_libraries
 
 print(f"Smoke test passed for pycolmap {pycolmap.__version__}")
 PY

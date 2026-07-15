@@ -1,0 +1,128 @@
+diff --git a/python/pycolmap/__init__.py b/python/pycolmap/__init__.py
+index 8b53c173..c7bfc094 100644
+--- a/python/pycolmap/__init__.py
++++ b/python/pycolmap/__init__.py
+@@ -1,6 +1,7 @@
+ import contextlib
+ import ctypes
+ import importlib
++import os
+ import platform
+ import textwrap
+ from pathlib import Path
+@@ -9,40 +10,88 @@ from typing import TYPE_CHECKING
+ from .utils import import_module_symbols
+ 
+ 
+-def _preload_cuda_lib(module_name: str, lib_name: str):
+-    """Preload a single library."""
++_CUDA_DLL_DIRECTORIES = []
++_CUDA_LIBRARY_HANDLES = []
++
++
++def _cuda_package_library_dirs(module_name: str):
++    """Return native-library directories from an NVIDIA Python package."""
+     try:
+         module = importlib.import_module(module_name)
+     except ImportError:
+-        return
+-    else:
+-        # TODO: update the logic to handle CUDA 13,
+-        # using as reference https://github.com/pytorch/pytorch/pull/163661.
+-
+-        # Resolve the library directory robustly
+-        if module_file_path := getattr(module, "__file__", None):
+-            lib_dir = Path(module_file_path).parent
+-        elif paths := getattr(module, "__path__", None):
+-            # Implicit namespace packages have __path__ but no __file__
+-            lib_dir = Path(list(paths)[0])
+-        else:
+-            return
+-        # Find the first file matching the pattern
+-        if lib_path := next((lib_dir / "lib").glob(lib_name), None):
+-            with contextlib.suppress(OSError):
+-                ctypes.CDLL(str(lib_path))
++        return ()
++
++    if module_file_path := getattr(module, "__file__", None):
++        package_dir = Path(module_file_path).parent
++    elif paths := getattr(module, "__path__", None):
++        package_dir = Path(list(paths)[0])
++    else:
++        return ()
++    return tuple(
++        directory
++        for name in ("lib", "bin")
++        if (directory := package_dir / name).is_dir()
++    )
++
++
++def _preload_linux_package(module_name: str, patterns: tuple[str, ...]):
++    """Preload one copy of each requested shared library with global symbols."""
++    for library_dir in _cuda_package_library_dirs(module_name):
++        for pattern in patterns:
++            if library := next(iter(sorted(library_dir.glob(pattern))), None):
++                try:
++                    handle = ctypes.CDLL(str(library), mode=ctypes.RTLD_GLOBAL)
++                except OSError as error:
++                    raise RuntimeError(
++                        f"Cannot load NVIDIA runtime library {library}: {error}"
++                    ) from error
++                _CUDA_LIBRARY_HANDLES.append(handle)
++
++
++def _register_windows_package(module_name: str):
++    """Keep NVIDIA package DLL directories in the process search path."""
++    for library_dir in _cuda_package_library_dirs(module_name):
++        with contextlib.suppress(OSError):
++            _CUDA_DLL_DIRECTORIES.append(os.add_dll_directory(library_dir))
+ 
+ 
+ def _preload_cuda_deps():
+-    """Preloads CUDA dependencies from pip packages on Linux."""
+-    if platform.system() != "Linux":
++    """Make CUDA dependencies installed as Python packages loadable."""
++    packages = (
++        ("nvidia.cuda_runtime", ("libcudart.so.*[0-9]",)),
++        ("nvidia.nvjitlink", ("libnvJitLink.so.*[0-9]",)),
++        ("nvidia.cuda_nvrtc", ("libnvrtc.so.*[0-9]",)),
++        ("nvidia.cublas", ("libcublasLt.so.*[0-9]", "libcublas.so.*[0-9]")),
++        ("nvidia.cufft", ("libcufft.so.*[0-9]",)),
++        ("nvidia.curand", ("libcurand.so.*[0-9]",)),
++        ("nvidia.cusparse", ("libcusparse.so.*[0-9]",)),
++        ("nvidia.cusolver", ("libcusolver.so.*[0-9]",)),
++        ("nvidia.nvtx", ("libnvToolsExt.so.*[0-9]",)),
++        (
++            "nvidia.cudnn",
++            (
++                "libcudnn.so.9",
++                "libcudnn_ops.so.9",
++                "libcudnn_adv.so.9",
++                "libcudnn_cnn.so.9",
++                "libcudnn_graph.so.9",
++                "libcudnn_heuristic.so.9",
++                "libcudnn_engines_precompiled.so.9",
++                "libcudnn_engines_runtime_compiled.so.9",
++            ),
++        ),
++        ("nvidia.cudss", ("libcudss.so.0",)),
++    )
++
++    system = platform.system()
++    if system == "Linux":
++        for module_name, patterns in packages:
++            _preload_linux_package(module_name, patterns)
++    elif system == "Windows":
++        for module_name, _ in packages:
++            _register_windows_package(module_name)
++    else:
+         return
+-    cuda_libs = {
+-        "nvidia.cuda_runtime": "libcudart.so.*[0-9]",
+-        "nvidia.curand": "libcurand.so.*[0-9]",
+-    }
+-    for module_name, lib_glob in cuda_libs.items():
+-        _preload_cuda_lib(module_name, lib_glob)
+ 
+ 
+ _preload_cuda_deps()

@@ -7,13 +7,15 @@ Guidance for AI coding agents working in this repository.
 **GPU pycolmap wheel builder** — a single-purpose fork of
 [`lyehe/build_gpu_colmap`](https://github.com/lyehe/build_gpu_colmap), published as
 `flol3622/build_gpu_colmap`. Its only job is to build, repair, validate, and publish
-**GPU-enabled `pycolmap` wheels** with the CUDA runtime and cuDSS bundled inside, so
-consumers need nothing but an NVIDIA display driver.
+**GPU-enabled `pycolmap` wheels** with exact CUDA, cuDNN, and cuDSS Python runtime
+dependencies, so consumers need nothing but an NVIDIA display driver and an ordinary
+pip/uv install.
 
 This is **not** a general COLMAP distribution: no CPU wheel matrix, no standalone
 COLMAP archives, no GUI packages.
 
-Current release: `pycolmap-4.1.0-cu128-cudss` — CPython 3.12, CUDA 12.8, cuDSS 0.7.1.4,
+Current release line: `pycolmap-4.1.0-cu128-cudss-r3` — CPython 3.12, CUDA 12.8,
+cuDSS 0.7.1.4,
 Caspar bundle-adjustment backend, for `manylinux_2_34`/`manylinux_2_35` x86_64 and
 `win_amd64`.
 
@@ -45,9 +47,13 @@ configuration is via environment variables:
 | `PYTHON_VERSION` | `3.12` | 3.10 – 3.14 |
 | `CUDA_VERSION` | `12.8` | 12.8, 13.0, 13.1 |
 | `MANYLINUX_TAG` | `manylinux_2_34_x86_64` | also `manylinux_2_28_x86_64` (CUDA 12.8 only) |
-| `BUNDLE_CUDA` | `true` | bundle CUDA runtime libs into the wheel |
+| `BUNDLE_CUDA` | `false` | use pinned NVIDIA Python dependencies (`true` retains the legacy monolithic mode) |
 | `WITH_CUDSS` | `true` | include cuDSS sparse solver |
 | `CUDSS_VERSION` | `0.7.1.4` | |
+
+The external-runtime mode is currently restricted to CUDA 12.8. CUDA 13 custom
+builds must set `BUNDLE_CUDA=true` until matching cu13 dependency pins and the
+ONNX Runtime CUDA 12 compatibility set are modeled together.
 
 Flow:
 
@@ -62,10 +68,11 @@ Flow:
    -DCUDA_ENABLED=ON -DCASPAR_ENABLED=ON -DDOWNLOAD_ENABLED=ON
    -DGFLAGS_USE_TARGET_NAMESPACE=ON`, then validates the installed CMake packages
    (Caspar targets present, `DOWNLOAD_ENABLED ON`, Ceres exports the cuDSS component).
-6. **Stage 2 — wheel build**: stamps the computed wheel version into the pycolmap
-   `pyproject.toml` (*after* stage 1 — the ExternalProject build restores the upstream
-   version), then `pip wheel` in `third_party/colmap-for-pycolmap` against the
-   already-built COLMAP/Ceres.
+6. **Stage 2 — wheel build**: stamps the computed wheel version and, for lightweight
+   builds, exact NVIDIA runtime requirements into the pycolmap `pyproject.toml`
+   (*after* stage 1 — the ExternalProject build restores the upstream version), then
+   `pip wheel` in `third_party/colmap-for-pycolmap` against the already-built
+   COLMAP/Ceres.
 7. Repairs with `auditwheel` (always excluding `libcuda.so.1`; excluding all CUDA
    runtime libs when `BUNDLE_CUDA=false`), manually injects the dlopen'd
    `libonnxruntime_providers_shared.so` / `_cuda.so` with `$ORIGIN` rpaths.
@@ -73,16 +80,17 @@ Flow:
    `manylinux_2_34` wheels, and writes wheel + `*.build_info.json` to
    `custom-wheelhouse/`.
 
-Wheel version suffix logic: bundled + cuDSS → `+cu<compact>.bundled.cudss`
-(e.g. `4.1.0+cu128.bundled.cudss`); bundle only → `+cu<compact>.bundled`;
-cuDSS only → `+cuda.cudss`; else `+cuda`.
+Wheel version suffix logic: external runtime + cuDSS →
+`+cu<compact>.pipcuda.cudss` (the maintained configuration); external runtime only →
+`+cu<compact>.pipcuda`; legacy bundled + cuDSS → `+cu<compact>.bundled.cudss`;
+legacy bundle only → `+cu<compact>.bundled`.
 
 ### Validation gates — never weaken these
 
 Every wheel must prove: CUDA enabled; Ceres exports the cuDSS component; Caspar present
 in COLMAP targets and the pycolmap API; `DOWNLOAD_ENABLED=ON`; filename/tags/metadata
-consistent; auditwheel/delvewheel repair applied; CUDA + cuDSS libs physically inside
-bundled wheels; installs and imports in a clean environment; ALIKED
+consistent; auditwheel/delvewheel repair applied; exact NVIDIA dependencies present
+and not duplicated in lightweight wheels; installs and imports in a clean environment; ALIKED
 `aliked-n16rot.onnx` download works from an empty cache
 (`.github/scripts/validate_aliked_download.py`).
 
@@ -95,8 +103,8 @@ GitHub release, verifying size and SHA-256. It reads dist-info metadata via HTTP
 requests so metadata resolution doesn't download the ~1.3 GiB wheel.
 
 - Supports CPython 3.12 on x86_64 Linux (glibc ≥ 2.34) and Windows only.
-- **When a new release is cut**, update `_RELEASE_BASE`/`_ASSETS` in
-  `wheel_redirect.py` (filenames, sha256, sizes, metadata hashes).
+- `release_wheels.json` pins filenames, sizes, and hashes. The maintained release
+  workflow regenerates and commits it before publishing a release.
 - Tests: `tests/test_wheel_redirect.py` (unittest-style) —
   `python3 -m unittest discover tests`.
 
@@ -110,9 +118,11 @@ requests so metadata resolution doesn't download the ~1.3 GiB wheel.
 | `patches/` | Source patches applied by the build script (Caspar bindings) |
 | `cmake/` | `patch_*.cmake` helpers used by `CMakeLists.txt` |
 | `.github/scripts/build_custom_manylinux_wheel.sh` | The Linux wheel build (moved here from `scripts_linux/`) |
+| `.github/scripts/stamp_pycolmap_wheel.py` | Stamps the local version and exact NVIDIA requirements |
 | `.github/scripts/validate_aliked_download.py` | ALIKED download gate |
 | `scripts/emit_build_info.py` | Writes `*.build_info.json` next to each wheel |
-| `wheel_redirect.py` + `pyproject.toml` | PEP 517 backend that fetches released wheels |
+| `scripts/update_release_wheels.py` | Generates the pinned manifest from released wheels |
+| `wheel_redirect.py` + `release_wheels.json` + `pyproject.toml` | PEP 517 backend and pinned released-wheel manifest |
 | `examples/uv/pyproject.toml` | Consumer example with platform-specific wheel URLs |
 | `third_party/` | Submodules: vcpkg, ceres-solver, colmap, colmap-for-pycolmap |
 
@@ -121,6 +131,7 @@ requests so metadata resolution doesn't download the ~1.3 GiB wheel.
 ```bash
 bash -n .github/scripts/build_custom_manylinux_wheel.sh
 python3 -m py_compile .github/scripts/validate_aliked_download.py
+python3 -m py_compile .github/scripts/stamp_pycolmap_wheel.py scripts/update_release_wheels.py
 python3 -m json.tool vcpkg.json >/dev/null
 actionlint \
   .github/workflows/build-required-pycolmap.yml \

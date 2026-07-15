@@ -61,7 +61,7 @@ on:
         description: Bundle CUDA and cuDSS runtime libraries into the wheel
         required: true
         type: boolean
-        default: true
+        default: false
       release_tag:
         description: Optional existing release tag to receive the wheel
         required: false

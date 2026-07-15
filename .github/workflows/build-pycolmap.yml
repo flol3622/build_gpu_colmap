@@ -9,6 +9,9 @@ on:
         default: ''
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-wheels:
     name: py${{ matrix.python-version }} ${{ matrix.os }} ${{ matrix.cuda && matrix.bundle_cuda && format('CUDA{0}-bundled', matrix.cuda_version) || matrix.cuda && matrix.cudss && format('CUDA{0}+cuDSS', matrix.cuda_version) || matrix.cuda && format('CUDA{0}', matrix.cuda_version) || 'CPU' }}
@@ -43,6 +46,22 @@ jobs:
             echo "Upstream already provides Caspar pycolmap bindings; skipping obsolete patch"
           else
             echo "ERROR: pycolmap Caspar bindings patch does not apply and upstream Caspar bindings not found"
+            exit 1
+          fi
+
+      - name: Apply pycolmap NVIDIA runtime preloader patch
+        shell: bash
+        run: |
+          PATCH_FILE="${GITHUB_WORKSPACE}/patches/pycolmap-nvidia-runtime-preload.patch"
+          if git -C third_party/colmap-for-pycolmap apply --check "$PATCH_FILE"; then
+            git -C third_party/colmap-for-pycolmap apply "$PATCH_FILE"
+            echo "pycolmap NVIDIA runtime preloader patch applied"
+          elif git -C third_party/colmap-for-pycolmap apply --reverse --check "$PATCH_FILE"; then
+            echo "pycolmap NVIDIA runtime preloader patch already applied"
+          elif git -C third_party/colmap-for-pycolmap grep -q "nvidia.cudnn" -- python/pycolmap/__init__.py; then
+            echo "Upstream already preloads NVIDIA runtime packages"
+          else
+            echo "ERROR: pycolmap NVIDIA runtime preloader patch cannot be applied"
             exit 1
           fi
 
@@ -387,25 +406,12 @@ jobs:
       # ==================== Build Python Wheel ====================
       - name: Stamp wheel metadata version
         shell: bash
-        working-directory: third_party/colmap-for-pycolmap
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          import re
-
-          path = Path("pyproject.toml")
-          text = path.read_text()
-          updated, count = re.subn(
-              r'^version = "[^"]+"',
-              'version = "4.1.0+cuda.cudss"',
-              text,
-              count=1,
-              flags=re.MULTILINE,
-          )
-          if count != 1:
-              raise SystemExit("Could not stamp the custom pycolmap version")
-          path.write_text(updated)
-          PY
+          python .github/scripts/stamp_pycolmap_wheel.py \
+            third_party/colmap-for-pycolmap/pyproject.toml \
+            --version "4.1.0+cu128.pipcuda.cudss" \
+            --external-nvidia-runtime \
+            --with-cudss
 
       - name: Build wheel (Windows)
         if: runner.os == 'Windows'
@@ -566,7 +572,20 @@ jobs:
           if ($wheel) {
             Write-Host "Repairing wheel: $($wheel.Name)"
             Write-Host "Search paths: $($addPaths -join ' ')"
-            python -m delvewheel repair -v @addPaths -w wheelhouse $wheel.FullName
+            $excludeDlls = @(
+              "cudart64_12.dll",
+              "cublas*.dll",
+              "cufft*.dll",
+              "curand*.dll",
+              "cusolver*.dll",
+              "cusparse*.dll",
+              "nvJitLink*.dll",
+              "nvrtc*.dll",
+              "nvToolsExt*.dll",
+              "cudnn*.dll",
+              "cudss*.dll"
+            ) -join ";"
+            python -m delvewheel repair -v @addPaths --exclude $excludeDlls -w wheelhouse $wheel.FullName
 
             # Remove original wheel, keep repaired one
             # delvewheel creates a new wheel with the same name
@@ -740,13 +759,36 @@ jobs:
           Write-Host "Testing wheel: $($wheel.Name)"
 
           # Install the wheel
-          python -m pip install $wheel.FullName --force-reinstall
+          python -m pip install $wheel.FullName --force-reinstall --no-cache-dir
 
           # Test import and version
           Write-Host "Testing pycolmap import..."
           python -c "import pycolmap; print(f'pycolmap version: {pycolmap.__version__}')"
           @'
+          import ctypes
+          import importlib
+          from pathlib import Path
+
           import pycolmap
+
+          assert len(pycolmap._CUDA_DLL_DIRECTORIES) >= 10
+
+          def package_root(module_name):
+              module = importlib.import_module(module_name)
+              if getattr(module, "__file__", None):
+                  return Path(module.__file__).parent
+              return Path(next(iter(module.__path__)))
+
+          cudnn_ops_path = next(
+              (package_root("nvidia.cudnn") / "bin").glob("cudnn_ops*.dll")
+          )
+          cudnn_ops = ctypes.WinDLL(str(cudnn_ops_path))
+          assert cudnn_ops.cudnnCreateFilterDescriptor
+
+          cudss_path = next(
+              (package_root("nvidia.cudss") / "bin").glob("cudss64_*.dll")
+          )
+          ctypes.WinDLL(str(cudss_path))
 
           assert (
               pycolmap.BundleAdjustmentBackend.CASPAR
@@ -785,7 +827,7 @@ jobs:
           echo "Testing wheel: $WHEEL"
 
           # Install the wheel
-          pip install "$WHEEL" --force-reinstall
+          pip install "$WHEEL" --force-reinstall --no-cache-dir
 
           # Test import and version
           echo "Testing pycolmap import..."
@@ -815,7 +857,7 @@ jobs:
         shell: pwsh
         working-directory: third_party/colmap-for-pycolmap
         run: |
-          $expected = "pycolmap-4.1.0+cuda.cudss-cp312-cp312-win_amd64.whl"
+          $expected = "pycolmap-4.1.0+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl"
           $wheels = @(Get-ChildItem -Path wheelhouse -Filter "*.whl")
           if ($wheels.Count -ne 1 -or $wheels[0].Name -ne $expected) {
             Write-Host "ERROR: Expected only $expected; found $($wheels.Name -join ', ')" -ForegroundColor Red
@@ -825,11 +867,37 @@ jobs:
           from pathlib import Path
           from zipfile import ZipFile
 
-          wheel = Path("wheelhouse/pycolmap-4.1.0+cuda.cudss-cp312-cp312-win_amd64.whl")
+          wheel = Path("wheelhouse/pycolmap-4.1.0+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl")
           with ZipFile(wheel) as archive:
               metadata_name = next(n for n in archive.namelist() if n.endswith(".dist-info/METADATA"))
               metadata = archive.read(metadata_name).decode()
-          assert "\nVersion: 4.1.0+cuda.cudss\n" in f"\n{metadata}"
+              names = tuple(archive.namelist())
+          assert "\nVersion: 4.1.0+cu128.pipcuda.cudss\n" in f"\n{metadata}"
+          required = (
+              "nvidia-cuda-runtime-cu12",
+              "nvidia-cublas-cu12",
+              "nvidia-cufft-cu12",
+              "nvidia-curand-cu12",
+              "nvidia-cusolver-cu12",
+              "nvidia-cusparse-cu12",
+              "nvidia-nvjitlink-cu12",
+              "nvidia-cuda-nvrtc-cu12",
+              "nvidia-nvtx-cu12",
+              "nvidia-cudnn-cu12",
+              "nvidia-cudss-cu12",
+          )
+          for requirement in required:
+              assert f"Requires-Dist: {requirement}" in metadata, requirement
+          forbidden = (
+              "cudart", "cublas", "cufft", "curand", "cusolver", "cusparse",
+              "nvjitlink", "nvrtc", "nvtoolsext", "cudnn", "cudss",
+          )
+          embedded = [
+              name for name in names
+              if name.lower().endswith(".dll")
+              and any(token in Path(name).name.lower() for token in forbidden)
+          ]
+          assert not embedded, f"NVIDIA DLLs remain embedded: {embedded}"
           print(f"Validated {wheel.name} and its METADATA version")
           '@ | python -
 
