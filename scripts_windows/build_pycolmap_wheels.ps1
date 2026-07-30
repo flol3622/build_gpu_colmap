@@ -125,7 +125,12 @@ if (Test-Path $PycolmapCasparPatch) {
             if ($LASTEXITCODE -eq 0) {
                 Write-Host "  Patch already applied" -ForegroundColor Green
             } else {
-                throw "pycolmap Caspar bindings patch does not apply cleanly"
+                git grep -q "BundleAdjustmentBackend::CASPAR" -- src/pycolmap/estimators/bundle_adjustment.cc 2>$null
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "  Upstream already provides Caspar pycolmap bindings; skipping obsolete patch" -ForegroundColor Green
+                } else {
+                    throw "pycolmap Caspar bindings patch does not apply and upstream Caspar bindings not found"
+                }
             }
         }
     } finally {

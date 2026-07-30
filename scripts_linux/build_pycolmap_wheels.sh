@@ -144,8 +144,10 @@ if [ -f "$PYCOLMAP_CASPAR_PATCH" ]; then
         echo -e "${GREEN}  Patch applied${NC}"
     elif git apply --reverse --check "$PYCOLMAP_CASPAR_PATCH"; then
         echo -e "${GREEN}  Patch already applied${NC}"
+    elif git grep -q "BundleAdjustmentBackend::CASPAR" -- src/pycolmap/estimators/bundle_adjustment.cc; then
+        echo -e "${GREEN}  Upstream already provides Caspar pycolmap bindings; skipping obsolete patch${NC}"
     else
-        echo -e "${RED}ERROR: pycolmap Caspar bindings patch does not apply cleanly${NC}"
+        echo -e "${RED}ERROR: pycolmap Caspar bindings patch does not apply and upstream Caspar bindings not found${NC}"
         popd >/dev/null
         exit 1
     fi
