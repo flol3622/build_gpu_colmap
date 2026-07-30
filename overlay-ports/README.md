@@ -43,6 +43,37 @@ Overlay ports allow us to patch vcpkg packages without modifying the vcpkg submo
 - `suitesparse-spqr/portfile.cmake` - Lines 27-32: Add CUDA_ARCHITECTURES default
 - `suitesparse-cholmod/portfile.cmake` - Lines 35-40: Add CUDA_ARCHITECTURES default
 
+### openblas
+
+**Issue:** OpenBLAS is compiled for the CPU of whichever machine happens to run the build, which caused two distinct problems on shared CI runners:
+
+1. **Intermittent build failures.** Linux pycolmap jobs failed at `vcpkg install` with:
+   ```
+   error: inlining failed in call to 'always_inline'
+          '_mm512_castps512_ps128': target specific option mismatch
+   ```
+   Identical configurations passed or failed depending only on which runner they landed on.
+
+2. **Non-portable artifacts.** Wheels built on an AVX-512 runner can execute AVX-512 instructions on a user's older CPU and die with `SIGILL`. This shipped silently — nothing fails at build time when the flags happen to line up.
+
+**Root Cause:** On a native build the port runs OpenBLAS's `getarch`, which probes the build host's CPU and writes `HAVE_AVX512VL` / `HAVE_AVX512BF16` into `config.h`. `kernel/simd/intrin.h` includes `intrin_avx512.h` based solely on those defines:
+
+```c
+#if defined(HAVE_AVX512VL) || defined(HAVE_AVX512BF16)
+#include "intrin_avx512.h"
+```
+
+but no matching `-mavx512*` flag is added for the generic kernels. GCC declares every `_mm512_*` intrinsic as `target("avx512f")` + `always_inline`, and inlining one into a caller lacking that target option is a hard error rather than a fallback. Confirmed against the failing job log: `-mavx512` appears zero times in the entire build.
+
+**Fix:** Force `TARGET`, which makes `getarch` run with `-DFORCE_<TARGET>` instead of probing, so `config.h` is byte-identical on every runner. `PRESCOTT` is OpenBLAS's conventional x86-64 baseline and only sets the floor for common/driver code. The `dynamic-arch` feature (requested from the root `vcpkg.json`) then builds every kernel variant — Haswell, SkylakeX, Zen, etc. — each with its own correct flags, dispatching on the *user's* CPU at runtime. Pinning the baseline therefore costs no kernel performance.
+
+**Modified Files:**
+- `openblas/portfile.cmake` - Adds `-DTARGET=PRESCOTT` for non-Windows x64
+- `openblas/vcpkg.json` - `port-version: 1` (forces an ABI change so stale binary-cache entries are not reused)
+- `../vcpkg.json` - Requests `openblas[dynamic-arch]` gated to `!windows`
+
+**Windows:** unaffected and unchanged. `dynamic-arch` is `"supports": "!windows | mingw"`, so it cannot be enabled under MSVC, and the `TARGET` pin is gated off there deliberately — pinning without runtime dispatch would be a straight performance loss. Windows keeps upstream host-detection behaviour; it does not suffer problem (1), and problem (2) remains open there.
+
 ## How It Works
 
 The CMakeLists.txt sets `VCPKG_OVERLAY_PORTS` to point to this directory before calling `project()`. When vcpkg resolves package names, it checks overlay ports first, so our patched versions take priority over the baseline vcpkg registry.
