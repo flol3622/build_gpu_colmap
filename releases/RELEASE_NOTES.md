@@ -1,26 +1,53 @@
-# COLMAP Build v4.1.0
+# COLMAP Build v4.1.1
 
-GPU-accelerated builds of the official **COLMAP 4.1.0** release for Windows and
-Linux, plus matching pycolmap wheels. The CUDA archives include **Caspar GPU
+GPU-accelerated builds of the official **COLMAP 4.1.1** patch release for Windows
+and Linux, plus matching pycolmap wheels. The CUDA archives include **Caspar GPU
 bundle adjustment**.
 
 This is a stable release: the COLMAP source is byte-identical to the upstream
-`4.1.0` tag (commit `fa8e3b3f`) and stamped as `4.1.0`. Every artifact carries a
+`4.1.1` tag (commit `a0d785fb`) and stamped as `4.1.1`. Every artifact carries a
 `build_info.json` provenance record (commit, toolchain, CUDA/cuDSS versions,
 feature flags).
 
-## What's new in COLMAP 4.1.0
+Upgrading from `v4.1.0` is recommended — 4.1.1 restores a large feature-matching
+performance regression present in 4.1.0.
 
-- **Spherical camera support** — new `EQUIRECTANGULAR` (360° panorama) camera
-  model, plus a `panorama_sfm` pipeline with global mapping.
-- **Caspar GPU bundle adjustment** — selectable backend for large-scale BA.
-- Additional wide-FOV / omnidirectional camera models: `FISHEYE`,
-  `SIMPLE_FISHEYE`, `EUCM`, `DIVISION`, `RAD_TAN_THIN_PRISM_FISHEYE`.
-- Two-focal `p4pf` estimation (separate `fx`/`fy`).
-- pycolmap exposes the Caspar API: `BundleAdjustmentBackend.CASPAR`,
-  `BundleAdjustmentOptions.caspar`, and `CasparBundleAdjustmentOptions`.
+## What's new in COLMAP 4.1.1
 
-See the upstream COLMAP 4.1.0 changelog for the complete list.
+Bug fixes:
+
+- **Feature matching speed restored** — 4.1.0 had a process-global OpenMP
+  critical section in `RANSAC`/`LORANSAC` that slowed matching by roughly 4–6x.
+- Fixed rescaling of already-undistorted images when `max_image_size` is given.
+- Fixed missing SVG icons in the distributed Windows binaries.
+- Fixed the Caspar CUDA build with MSVC forced includes.
+- Fixed glog color-support version detection.
+- Fixed typos in a user-facing help string and the FAQ.
+
+Improvements:
+
+- The mapper database is now loaded lazily instead of at GUI startup, avoiding a
+  redundant read when opening the GUI or a project.
+- UI icons are tinted to the palette for better dark-theme legibility.
+- Image/point viewer metadata is shown even when source images are missing on disk.
+- The Caspar build now fails early with a clear error on CUDA architectures below 7.0.
+
+### ⚠️ Breaking change
+
+Upstream renamed the misspelled pycolmap enum `GPSTransfromEllipsoid` to
+**`GPSTransformEllipsoid`**. The old name was removed with no backwards-compatible
+alias, so any code referencing it must be updated:
+
+```python
+# before (4.1.0 and earlier)
+pycolmap.GPSTransfromEllipsoid
+# after (4.1.1)
+pycolmap.GPSTransformEllipsoid
+```
+
+This is unusual for a patch release, but it matches the upstream 4.1.1 tag.
+
+See the upstream COLMAP 4.1.1 changelog for the complete list.
 
 ## Package matrix
 
@@ -49,14 +76,14 @@ Every artifact ships a `*.build_info.json` provenance sidecar, and a
 Windows:
 
 ```powershell
-Expand-Archive COLMAP-4.1.0-windows-2022-CUDA-Caspar.zip -DestinationPath C:\Tools\COLMAP
+Expand-Archive COLMAP-4.1.1-windows-2022-CUDA-Caspar.zip -DestinationPath C:\Tools\COLMAP
 C:\Tools\COLMAP\bin\colmap.exe version
 ```
 
 Linux:
 
 ```bash
-unzip COLMAP-4.1.0-ubuntu-22.04-CUDA-Caspar.zip -d ~/tools/colmap
+unzip COLMAP-4.1.1-ubuntu-22.04-CUDA-Caspar.zip -d ~/tools/colmap
 ~/tools/colmap/bin/colmap version
 ```
 
@@ -66,7 +93,7 @@ Download the wheel matching your Python version, platform, and CUDA/runtime
 needs, then install it directly:
 
 ```bash
-pip install pycolmap-4.1.0+cuda-cp312-cp312-win_amd64.whl
+pip install pycolmap-4.1.1+cuda-cp312-cp312-win_amd64.whl
 ```
 
 ## Caspar bundle adjustment
@@ -83,6 +110,9 @@ opts = pycolmap.BundleAdjustmentOptions()
 opts.backend = pycolmap.BundleAdjustmentBackend.CASPAR
 opts.caspar.gpu_index = "0"
 ```
+
+Caspar requires a CUDA architecture of 7.0 or newer; 4.1.1 now reports this as a
+clear build-time error rather than failing obscurely.
 
 A deterministic validation script is included in the repository:
 

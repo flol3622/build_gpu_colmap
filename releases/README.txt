@@ -6,7 +6,7 @@ Official release packages are published to GitHub Releases:
 
   https://github.com/lyehe/build_gpu_colmap/releases
 
-The latest release (v4.1.0) provides the official COLMAP 4.1.0 plus matching
+The latest release (v4.1.1) provides the official COLMAP 4.1.1 plus matching
 pycolmap wheels for Windows and Linux, with CUDA + Caspar GPU bundle adjustment
 (and optional cuDSS / GUI variants). Every asset is covered by SHA256SUMS.txt
 and ships a build_info.json provenance record.
