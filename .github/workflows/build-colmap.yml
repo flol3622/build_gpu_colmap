@@ -128,9 +128,18 @@ jobs:
           df -h
 
       # ==================== CUDA Setup ====================
+      # NVIDIA's package endpoints are intermittently inconsistent -- e.g. the
+      # apt index served out of sync with its declared size ("File has
+      # unexpected size ... Mirror sync in progress?"), which failed 15 Linux
+      # jobs in the v4.1.1 release run. Jimver/cuda-toolkit is a JS action, so
+      # nick-fields/retry (which only wraps `command:` shell steps) cannot be
+      # used here; the first attempt is therefore allowed to fail soft and a
+      # single retry runs after a short delay.
       - name: Install CUDA Toolkit (Windows)
+        id: cuda_windows
         if: matrix.cuda && runner.os == 'Windows'
         uses: Jimver/cuda-toolkit@v0.2.30
+        continue-on-error: true
         with:
           cuda: ${{ matrix.cuda_version }}
           method: 'network'
@@ -138,14 +147,52 @@ jobs:
           use-github-cache: false
           log-file-suffix: '-${{ matrix.name }}.log'
 
+      - name: Wait before CUDA retry (Windows)
+        if: matrix.cuda && runner.os == 'Windows' && steps.cuda_windows.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "CUDA toolkit install failed; retrying after a delay to let transient"
+          echo "NVIDIA endpoint/CDN inconsistency clear."
+          sleep 90
+
+      - name: Install CUDA Toolkit (Windows, retry)
+        if: matrix.cuda && runner.os == 'Windows' && steps.cuda_windows.outcome == 'failure'
+        uses: Jimver/cuda-toolkit@v0.2.30
+        with:
+          cuda: ${{ matrix.cuda_version }}
+          method: 'network'
+          sub-packages: '["nvcc", "nvtx", "cudart", "curand", "curand_dev", "nvrtc", "nvrtc_dev", "nvjitlink", "cublas", "cublas_dev", "cusparse", "cusparse_dev", "cusolver", "cusolver_dev", "cufft", "cufft_dev"]'
+          use-github-cache: false
+          log-file-suffix: '-${{ matrix.name }}-retry.log'
+
       - name: Install CUDA Toolkit (Linux)
+        id: cuda_linux
         if: matrix.cuda && runner.os == 'Linux'
         uses: Jimver/cuda-toolkit@v0.2.30
+        continue-on-error: true
         with:
           cuda: ${{ matrix.cuda_version }}
           method: 'network'
           linux-local-args: '["--toolkit"]'
           log-file-suffix: '-${{ matrix.name }}.log'
+
+      - name: Wait before CUDA retry (Linux)
+        if: matrix.cuda && runner.os == 'Linux' && steps.cuda_linux.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "CUDA toolkit install failed; refreshing apt indices and retrying after"
+          echo "a delay to let transient NVIDIA mirror inconsistency clear."
+          sleep 90
+          sudo apt-get update || true
+
+      - name: Install CUDA Toolkit (Linux, retry)
+        if: matrix.cuda && runner.os == 'Linux' && steps.cuda_linux.outcome == 'failure'
+        uses: Jimver/cuda-toolkit@v0.2.30
+        with:
+          cuda: ${{ matrix.cuda_version }}
+          method: 'network'
+          linux-local-args: '["--toolkit"]'
+          log-file-suffix: '-${{ matrix.name }}-retry.log'
 
       # ==================== cuDSS Setup ====================
       - name: Install cuDSS (Windows)
