@@ -73,13 +73,33 @@ endif()
 # pinning the baseline costs no kernel performance.
 #
 # DYNAMIC_ARCH is requested through the port feature (see vcpkg.json in the
-# repo root) because it is unsupported on Windows/MSVC; the TARGET pin can only
-# be injected here. Windows therefore keeps upstream host-detection behaviour --
-# it is not affected by (1), and (2) cannot be fixed the same way without
-# giving up runtime dispatch.
-if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64" AND NOT VCPKG_TARGET_IS_WINDOWS)
-    list(APPEND OPTIONS -DTARGET=PRESCOTT)
-    message(STATUS "OpenBLAS: pinned TARGET=PRESCOTT baseline (runtime dispatch via DYNAMIC_ARCH)")
+# repo root). It is declared "supports": "!windows | mingw", so it cannot be
+# enabled under MSVC -- OpenBLAS's runtime-dispatch kernels rely on GCC-style
+# assembly that the MSVC build does not handle. The two platforms therefore get
+# different treatment:
+#
+#   Linux  -- pin the baseline to PRESCOTT and let DYNAMIC_ARCH build every
+#             kernel variant, dispatching on the user's CPU at runtime. The
+#             pinned baseline only floors the common/driver code, so no kernel
+#             performance is lost.
+#
+#   Windows -- runtime dispatch is unavailable, so the only way to stop shipping
+#             a binary tuned to a random runner is to fix the baseline outright.
+#             NEHALEM (SSE4.2, 2008+) is chosen for maximum portability. The
+#             performance give-up is small in this project's workload because
+#             COLMAP and Ceres do most vectorised linear algebra through Eigen,
+#             whose own SIMD selection is independent of OpenBLAS's TARGET;
+#             OpenBLAS here mainly backs LAPACK for SuiteSparse/Ceres. Raise
+#             this to HASWELL (AVX2, 2013+) if the AVX2 floor is acceptable for
+#             your users and you want faster dense kernels.
+if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
+    if(VCPKG_TARGET_IS_WINDOWS)
+        list(APPEND OPTIONS -DTARGET=NEHALEM)
+        message(STATUS "OpenBLAS: pinned TARGET=NEHALEM (fixed portable baseline; DYNAMIC_ARCH unavailable on MSVC)")
+    else()
+        list(APPEND OPTIONS -DTARGET=PRESCOTT)
+        message(STATUS "OpenBLAS: pinned TARGET=PRESCOTT baseline (runtime dispatch via DYNAMIC_ARCH)")
+    endif()
 endif()
 
 vcpkg_cmake_configure(

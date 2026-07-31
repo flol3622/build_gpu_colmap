@@ -65,14 +65,19 @@ Overlay ports allow us to patch vcpkg packages without modifying the vcpkg submo
 
 but no matching `-mavx512*` flag is added for the generic kernels. GCC declares every `_mm512_*` intrinsic as `target("avx512f")` + `always_inline`, and inlining one into a caller lacking that target option is a hard error rather than a fallback. Confirmed against the failing job log: `-mavx512` appears zero times in the entire build.
 
-**Fix:** Force `TARGET`, which makes `getarch` run with `-DFORCE_<TARGET>` instead of probing, so `config.h` is byte-identical on every runner. `PRESCOTT` is OpenBLAS's conventional x86-64 baseline and only sets the floor for common/driver code. The `dynamic-arch` feature (requested from the root `vcpkg.json`) then builds every kernel variant — Haswell, SkylakeX, Zen, etc. — each with its own correct flags, dispatching on the *user's* CPU at runtime. Pinning the baseline therefore costs no kernel performance.
+**Fix:** Force `TARGET`, which makes `getarch` run with `-DFORCE_<TARGET>` instead of probing, so `config.h` is byte-identical on every runner. Both platforms are pinned, but they get different baselines because runtime dispatch is only available on one of them:
+
+| Platform | `TARGET` | Dispatch | Rationale |
+| --- | --- | --- | --- |
+| Linux | `PRESCOTT` | `DYNAMIC_ARCH` builds every kernel variant and selects on the user's CPU at runtime | The pinned baseline only floors common/driver code, so no kernel performance is lost |
+| Windows | `NEHALEM` (SSE4.2, 2008+) | none available | `dynamic-arch` is `"supports": "!windows | mingw"` and cannot be enabled under MSVC, since OpenBLAS's dispatch kernels rely on GCC-style assembly |
+
+Windows therefore trades peak dense-kernel throughput for a deterministic, portable binary. That trade is cheap in this project: COLMAP and Ceres perform most vectorised linear algebra through Eigen, whose SIMD selection is independent of OpenBLAS's `TARGET`; OpenBLAS here mainly backs LAPACK for SuiteSparse/Ceres. Raise the Windows baseline to `HASWELL` (AVX2, 2013+) if an AVX2 floor is acceptable for your users and faster dense kernels are wanted — it is a one-line change in the portfile.
 
 **Modified Files:**
-- `openblas/portfile.cmake` - Adds `-DTARGET=PRESCOTT` for non-Windows x64
-- `openblas/vcpkg.json` - `port-version: 1` (forces an ABI change so stale binary-cache entries are not reused)
+- `openblas/portfile.cmake` - Adds `-DTARGET=PRESCOTT` (non-Windows x64) and `-DTARGET=NEHALEM` (Windows x64)
+- `openblas/vcpkg.json` - `port-version: 2` (forces an ABI change so stale binary-cache entries are not reused)
 - `../vcpkg.json` - Requests `openblas[dynamic-arch]` gated to `!windows`
-
-**Windows:** unaffected and unchanged. `dynamic-arch` is `"supports": "!windows | mingw"`, so it cannot be enabled under MSVC, and the `TARGET` pin is gated off there deliberately — pinning without runtime dispatch would be a straight performance loss. Windows keeps upstream host-detection behaviour; it does not suffer problem (1), and problem (2) remains open there.
 
 ## How It Works
 
