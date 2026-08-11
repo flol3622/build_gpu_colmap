@@ -17,10 +17,15 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Checkout repository and pinned submodules
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      # The submodules carry `update = none` so consumer installs of the
+      # redirect package never fetch them (the deep Caspar filenames break
+      # stock Windows clones); CI must therefore fetch them explicitly with
+      # --checkout, which overrides that setting.
+      - name: Fetch pinned submodules
+        run: git submodule update --init --recursive --checkout
 
       - name: Free runner disk space
         run: |

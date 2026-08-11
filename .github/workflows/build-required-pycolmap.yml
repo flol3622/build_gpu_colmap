@@ -48,9 +48,10 @@ jobs:
 
       # The repository tests exercise the pinned pycolmap sources, so this
       # job needs the colmap-for-pycolmap submodule (shallow; the other
-      # submodules are irrelevant here and expensive to fetch).
+      # submodules are irrelevant here and expensive to fetch). --checkout
+      # overrides the consumer-facing `update = none` in .gitmodules.
       - name: Fetch pinned pycolmap sources for the repository tests
-        run: git submodule update --init --depth 1 third_party/colmap-for-pycolmap
+        run: git submodule update --init --checkout --depth 1 third_party/colmap-for-pycolmap
 
       - name: Download validated wheel artifacts
         uses: actions/download-artifact@v4
