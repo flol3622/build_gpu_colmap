@@ -10,7 +10,7 @@ MANYLINUX_TAG="${MANYLINUX_TAG:-manylinux_2_34_x86_64}"
 BUNDLE_CUDA="${BUNDLE_CUDA:-false}"
 WITH_CUDSS="${WITH_CUDSS:-true}"
 CUDSS_VERSION="${CUDSS_VERSION:-0.7.1.4}"
-# COLMAP 4.1.0 fetches ONNX Runtime 1.24.4's CUDA 12 provider. Its CUDA EP uses
+# COLMAP 4.1.1 fetches ONNX Runtime 1.24.4's CUDA 12 provider. Its CUDA EP uses
 # cuDNN's legacy API as well as the graph API, so the reduced JIT-only package
 # is insufficient (for example, ALIKED needs cudnnCreateFilterDescriptor from
 # libcudnn_ops). Keep this version aligned with ONNX Runtime's CUDA provider.

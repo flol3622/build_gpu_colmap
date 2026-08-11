@@ -245,7 +245,7 @@ jobs:
         run: |
           python .github/scripts/stamp_pycolmap_wheel.py \
             third_party/colmap-for-pycolmap/pyproject.toml \
-            --version "4.1.0+cu128.pipcuda.cudss" \
+            --version "4.1.1+cu128.pipcuda.cudss" \
             --external-nvidia-runtime \
             --with-cudss
 
@@ -525,7 +525,7 @@ jobs:
         shell: pwsh
         working-directory: third_party/colmap-for-pycolmap
         run: |
-          $expected = "pycolmap-4.1.0+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl"
+          $expected = "pycolmap-4.1.1+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl"
           $wheels = @(Get-ChildItem -Path wheelhouse -Filter "*.whl")
           if ($wheels.Count -ne 1 -or $wheels[0].Name -ne $expected) {
             Write-Host "ERROR: Expected only $expected; found $($wheels.Name -join ', ')" -ForegroundColor Red
@@ -535,12 +535,12 @@ jobs:
           from pathlib import Path
           from zipfile import ZipFile
 
-          wheel = Path("wheelhouse/pycolmap-4.1.0+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl")
+          wheel = Path("wheelhouse/pycolmap-4.1.1+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl")
           with ZipFile(wheel) as archive:
               metadata_name = next(n for n in archive.namelist() if n.endswith(".dist-info/METADATA"))
               metadata = archive.read(metadata_name).decode()
               names = tuple(archive.namelist())
-          assert "\nVersion: 4.1.0+cu128.pipcuda.cudss\n" in f"\n{metadata}"
+          assert "\nVersion: 4.1.1+cu128.pipcuda.cudss\n" in f"\n{metadata}"
           required = (
               "nvidia-cuda-runtime-cu12",
               "nvidia-cublas-cu12",

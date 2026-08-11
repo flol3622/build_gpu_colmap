@@ -2,7 +2,7 @@
 
 This repository has one purpose: build, validate, and publish two CPython 3.12
 GPU `pycolmap` wheels, one for `manylinux_2_34_x86_64` and one for
-`win_amd64`. Both use COLMAP 4.1.0, CUDA 12.8.1, cuDNN 9.10.2, cuDSS 0.7.1,
+`win_amd64`. Both use COLMAP 4.1.1, CUDA 12.8.1, cuDNN 9.10.2, cuDSS 0.7.1,
 Caspar, and pinned NVIDIA Python runtime dependencies.
 
 Do not add CPU variants, GUI packages, standalone COLMAP archives, local build

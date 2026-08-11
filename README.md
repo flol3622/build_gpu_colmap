@@ -4,10 +4,10 @@ This repository builds and publishes exactly two GPU-enabled `pycolmap` wheels:
 
 | Platform | Wheel |
 | --- | --- |
-| Linux x86_64, glibc 2.34+ | `pycolmap-4.1.0+cu128.pipcuda.cudss-cp312-cp312-manylinux_2_34_x86_64.whl` |
-| Windows x86_64 | `pycolmap-4.1.0+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl` |
+| Linux x86_64, glibc 2.34+ | `pycolmap-4.1.1+cu128.pipcuda.cudss-cp312-cp312-manylinux_2_34_x86_64.whl` |
+| Windows x86_64 | `pycolmap-4.1.1+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl` |
 
-Both target CPython 3.12 and COLMAP 4.1.0 with CUDA 12.8.1, cuDNN 9.10.2,
+Both target CPython 3.12 and COLMAP 4.1.1 with CUDA 12.8.1, cuDNN 9.10.2,
 cuDSS 0.7.1, ONNX Runtime CUDA inference, ALIKED/LightGlue, and the Caspar
 bundle-adjustment backend. CUDA, cuDNN, and cuDSS are pinned Python
 dependencies, so pip or uv installs the user-space GPU runtime automatically.
@@ -32,11 +32,11 @@ Alternatively, download the matching asset from
 [GitHub Releases](https://github.com/flol3622/build_gpu_colmap/releases) and run:
 
 ```bash
-python -m pip install /path/to/pycolmap-4.1.0+cu128.pipcuda.cudss-cp312-cp312-manylinux_2_34_x86_64.whl
+python -m pip install /path/to/pycolmap-4.1.1+cu128.pipcuda.cudss-cp312-cp312-manylinux_2_34_x86_64.whl
 ```
 
 ```powershell
-python -m pip install C:\path\to\pycolmap-4.1.0+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl
+python -m pip install C:\path\to\pycolmap-4.1.1+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl
 ```
 
 A complete uv consumer example is in
@@ -53,7 +53,7 @@ requested tag at that exact commit, and marks the GitHub release as latest.
 ```bash
 gh workflow run build-required-pycolmap.yml \
   --ref master \
-  -f release_tag=pycolmap-4.1.0-cu128-cudss-r3
+  -f release_tag=pycolmap-4.1.1-cu128-cudss-r1
 ```
 
 The two platform workflows are reusable implementation details and cannot be

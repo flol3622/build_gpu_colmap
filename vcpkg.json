@@ -33,6 +33,11 @@
                          "blas",
                          "lapack",
                          {
+                             "name": "openblas",
+                             "features": ["dynamic-arch"],
+                             "platform": "!windows"
+                         },
+                         {
                              "name": "suitesparse",
                              "features": ["gpl"]
                          }

@@ -94,28 +94,33 @@ foreach(PRECISION IN ITEMS f32 f64)
     message(STATUS "Patched ${SOLVER_FILE} to include <string> for std::to_string")
 endforeach()
 
-# Drop the Caspar msvc_compact.h /FI force-includes entirely (both C/C++ and CUDA).
-# COLMAP force-includes an external msvc_compact.h into every Caspar TU via /FI just
-# to inject `uint` (used by the generated .cu/.cuh/.h) and `<string>` (used by host
+# Drop the Caspar MSVC compat force-includes entirely (both C/C++ and CUDA).
+# COLMAP force-includes an external compat header into every Caspar TU just to
+# inject `uint` (used by the generated .cu/.cuh/.h) and `<string>` (used by host
 # solver.cc, which does NOT use uint). That force-include is the fragile point on
-# Windows: msvc_compact.h must be openable the instant cl.exe starts each TU, and it
+# Windows: the header must be openable the instant cl.exe starts each TU, and it
 # intermittently loses to Windows Defender ("fatal error C1083: Cannot open
 # msvc_compact.h"). The per-file patches above already inject `uint` into the
 # .cu/.cuh/.h and `<string>` into solver.cc, so the generated sources are
-# self-contained -- the force-include is pure redundancy. Removing it (msvc_compact.h
-# is never referenced) also avoids the nvcc/cudafe CRT double-definition
-# (C2011/C2953) the CUDA /FI caused.
+# self-contained -- the force-include is pure redundancy. Removing it also avoids
+# the nvcc/cudafe CRT double-definition (C2011/C2953) the CUDA force-include caused.
+#
+# Two upstream spellings must be handled, because COLMAP restructured this block
+# in 4.1.1:
+#   4.1.0: CUDA used  -Xcompiler /FI"${_MSVC_COMPACT_HEADER}"
+#   4.1.1: CUDA uses  --pre-include="${_MSVC_CUDA_COMPACT_HEADER}"  (uint only)
+# Matching on the header variable name rather than on the flag covers both.
 set(THIRDPARTY_CMAKE "${COLMAP_SOURCE_DIR}/src/thirdparty/CMakeLists.txt")
 if(EXISTS "${THIRDPARTY_CMAKE}")
     file(READ "${THIRDPARTY_CMAKE}" TP_CONTENT)
-    if(TP_CONTENT MATCHES "/FI\"[^\n]*_MSVC_COMPACT_HEADER")
+    if(TP_CONTENT MATCHES "(/FI\"|--pre-include=\")[^\n]*_MSVC_(CUDA_)?COMPACT_HEADER")
         string(REGEX REPLACE
-            "[^\n]*/FI\"[^\n]*_MSVC_COMPACT_HEADER[^\n]*\n"
+            "[^\n]*(/FI\"|--pre-include=\")[^\n]*_MSVC_(CUDA_)?COMPACT_HEADER[^\n]*\n"
             ""
             TP_CONTENT "${TP_CONTENT}")
         file(WRITE "${THIRDPARTY_CMAKE}" "${TP_CONTENT}")
-        message(STATUS "Removed Caspar msvc_compact.h /FI force-includes; generated sources self-patched (uint + <string>)")
+        message(STATUS "Removed Caspar MSVC compat force-includes; generated sources self-patched (uint + <string>)")
     else()
-        message(STATUS "Caspar msvc_compact.h /FI force-include not present - skipping")
+        message(STATUS "Caspar MSVC compat force-include not present - skipping")
     endif()
 endif()

@@ -7,7 +7,7 @@ on:
         description: Release tag to create and publish after all wheels pass
         required: true
         type: string
-        default: pycolmap-4.1.0-cu128-cudss-r3
+        default: pycolmap-4.1.1-cu128-cudss-r1
 
 permissions:
   contents: write
@@ -81,6 +81,6 @@ jobs:
           gh release create "$RELEASE_TAG" release-wheelhouse/* \
             --repo "$GITHUB_REPOSITORY" \
             --target "$(git rev-parse HEAD)" \
-            --title "pycolmap 4.1.0 CUDA 12.8 + cuDSS wheels" \
+            --title "pycolmap 4.1.1 CUDA 12.8 + cuDSS wheels" \
             --notes "CUDA 12.8.1, cuDNN 9.10.2, and cuDSS 0.7.1 runtimes install automatically as pinned Python dependencies." \
             --latest
