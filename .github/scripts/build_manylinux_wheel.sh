@@ -128,14 +128,25 @@ fi
 if [[ "$BUNDLE_CUDA" == true ]]; then
   CUDNN_PACKAGES+=("libcudnn9-cuda-12-${ONNXRUNTIME_CUDNN_VERSION}-1")
 fi
-dnf install -y \
-  autoconf automake binutils bison curl flex git libtool make patch \
-  kernel-headers perl-core perl-IPC-Cmd pkgconf-pkg-config tar unzip wget which xz zip \
-  "cuda-compiler-${CUDA_PACKAGE_SUFFIX}" \
-  "cuda-libraries-devel-${CUDA_PACKAGE_SUFFIX}" \
-  "cuda-nvtx-${CUDA_PACKAGE_SUFFIX}" \
-  "${CUDNN_PACKAGES[@]}" \
-  "${ONNXRUNTIME_CUDA_PACKAGES[@]}"
+# NVIDIA's package endpoints are intermittently inconsistent (mirror sync in
+# progress => "File has unexpected size"); allow one retry after a delay.
+install_build_packages() {
+  dnf install -y \
+    autoconf automake binutils bison curl flex git libtool make patch \
+    kernel-headers perl-core perl-IPC-Cmd pkgconf-pkg-config tar unzip wget which xz zip \
+    "cuda-compiler-${CUDA_PACKAGE_SUFFIX}" \
+    "cuda-libraries-devel-${CUDA_PACKAGE_SUFFIX}" \
+    "cuda-nvtx-${CUDA_PACKAGE_SUFFIX}" \
+    "${CUDNN_PACKAGES[@]}" \
+    "${ONNXRUNTIME_CUDA_PACKAGES[@]}"
+}
+if ! install_build_packages; then
+  echo "CUDA package install failed; retrying after a delay to let transient" >&2
+  echo "NVIDIA endpoint/CDN inconsistency clear." >&2
+  sleep 90
+  dnf clean all
+  install_build_packages
+fi
 dnf clean all
 
 if [[ ! -x "$CUDA_ROOT/bin/nvcc" && -x /usr/local/cuda/bin/nvcc ]]; then

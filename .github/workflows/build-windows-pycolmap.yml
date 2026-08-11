@@ -73,15 +73,41 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel scikit-build-core[pyproject] "pybind11>=3.0.2" delvewheel
 
       # ==================== CUDA Setup ====================
+      # NVIDIA's package endpoints are intermittently inconsistent, and
+      # Jimver/cuda-toolkit is a JS action, so nick-fields/retry (which only
+      # wraps `command:` shell steps) cannot be used here; the first attempt is
+      # therefore allowed to fail soft and a single retry runs after a short
+      # delay. The retry is gated on steps.<id>.outcome, not .conclusion:
+      # continue-on-error rewrites conclusion to 'success'.
       - name: Install CUDA Toolkit (Windows, CUDA 12.x)
+        id: cuda_win12
         if: matrix.cuda && runner.os == 'Windows' && !startsWith(matrix.cuda_version, '13.')
         uses: Jimver/cuda-toolkit@v0.2.30
+        continue-on-error: true
         with:
           cuda: ${{ matrix.cuda_version }}
           method: 'network'
           sub-packages: '["nvcc", "nvtx", "cudart", "curand", "curand_dev", "nvrtc", "nvrtc_dev", "nvjitlink", "cublas", "cublas_dev", "cusparse", "cusparse_dev", "cusolver", "cusolver_dev", "cufft", "cufft_dev"]'
           use-github-cache: false
           log-file-suffix: '-windows-py${{ matrix.python-version }}-cuda${{ matrix.cuda_version }}.log'
+
+      - name: Wait before CUDA retry (Windows, CUDA 12.x)
+        if: matrix.cuda && runner.os == 'Windows' && !startsWith(matrix.cuda_version, '13.') && steps.cuda_win12.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "CUDA toolkit install failed; retrying after a delay to let transient"
+          echo "NVIDIA endpoint/CDN inconsistency clear."
+          sleep 90
+
+      - name: Install CUDA Toolkit (Windows, CUDA 12.x, retry)
+        if: matrix.cuda && runner.os == 'Windows' && !startsWith(matrix.cuda_version, '13.') && steps.cuda_win12.outcome == 'failure'
+        uses: Jimver/cuda-toolkit@v0.2.30
+        with:
+          cuda: ${{ matrix.cuda_version }}
+          method: 'network'
+          sub-packages: '["nvcc", "nvtx", "cudart", "curand", "curand_dev", "nvrtc", "nvrtc_dev", "nvjitlink", "cublas", "cublas_dev", "cusparse", "cusparse_dev", "cusolver", "cusolver_dev", "cufft", "cufft_dev"]'
+          use-github-cache: false
+          log-file-suffix: '-windows-py${{ matrix.python-version }}-cuda${{ matrix.cuda_version }}-retry.log'
 
       # ==================== cuDSS Setup ====================
       - name: Install cuDSS (Windows)
