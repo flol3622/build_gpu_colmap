@@ -42,7 +42,10 @@ uv run python -c "import pycolmap; print(pycolmap.__version__)"
 That installs a tiny redirect package which picks the wheel for your platform
 from the latest pinned release and checks its size and SHA-256. Nothing is
 compiled locally. See [`examples/uv/pyproject.toml`](examples/uv/pyproject.toml)
-for a full consumer project.
+for a full consumer project, and
+[`examples/uv/sfm_demo.py`](examples/uv/sfm_demo.py) for a 6-image GPU
+sparse SfM run (ALIKED, LightGlue, GLOMAP, Caspar/cuDSS bundle adjustment)
+ending in a sparse point cloud.
 
 Prefer doing it by hand? Grab the asset from
 [Releases](https://github.com/flol3622/build_gpu_colmap/releases) and
