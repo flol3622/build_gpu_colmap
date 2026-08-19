@@ -248,6 +248,15 @@ export BASE_VERSION
 WHEEL_VERSION="${BASE_VERSION}${VERSION_SUFFIX}"
 export WHEEL_VERSION
 
+# pycolmap compiles VERSION_INFO from CMake's PROJECT_VERSION, and
+# scikit-build-core deliberately hands CMake a numeric-only version because
+# project(VERSION) cannot parse PEP 440 suffixes. So pycolmap.__version__ is
+# the release segment alone: 4.2.0 for a 4.2.0.dev0 build. The full version
+# survives in the wheel metadata, which is asserted separately.
+CORE_VERSION="$(printf '%s' "$BASE_VERSION" | grep -oE '^[0-9]+(\.[0-9]+)*')"
+[[ -n "$CORE_VERSION" ]] || die "No numeric release segment in version $BASE_VERSION"
+export CORE_VERSION
+
 rm -rf "$BUILD_ROOT" "$WHEELHOUSE"
 mkdir -p "$BUILD_ROOT" "$WHEELHOUSE" /workspace/.cache/vcpkg
 export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-$(nproc)}"
@@ -493,7 +502,7 @@ assert "libnvrtc-builtins.so.12.8" in loaded_names, loaded_names
 assert "libnvrtc.so.12" in loaded_names, loaded_names
 assert "libnvrtc.alt.so.12" not in loaded_names, loaded_names
 
-assert pycolmap.__version__ == os.environ["BASE_VERSION"]
+assert pycolmap.__version__ == os.environ["CORE_VERSION"]
 assert importlib.metadata.version("pycolmap") == os.environ["WHEEL_VERSION"]
 assert pycolmap.BundleAdjustmentBackend.CASPAR == pycolmap.BundleAdjustmentBackend("CASPAR")
 options = pycolmap.BundleAdjustmentOptions()
