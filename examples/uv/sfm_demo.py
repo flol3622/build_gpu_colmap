@@ -48,10 +48,12 @@ extraction_options = pycolmap.FeatureExtractionOptions(
 )
 # 2048 is the LoMa default; 4096 is the quality-first setting.
 extraction_options.loma.max_num_features = 2048
-# bf16 needs Ampere or newer; COLMAP probes the ONNX provider and falls back
-# to fp32 when the GPU cannot do it. use_fast_resize stays off (the default):
-# it buys 2-3x faster extraction on full-resolution input at a small accuracy
-# cost, which is not worth it for images already downscaled to 800 px.
+# bf16 needs Ampere or newer. The fallback is not free: COLMAP downloads the
+# bf16 model, tries to initialize it, and only drops to fp32 once ONNX Runtime
+# raises. On a pre-Ampere GPU that costs an extra ~690 MB descriptor download
+# for nothing, so set this to False there. use_fast_resize stays off (the
+# default): it buys 2-3x faster extraction on full-resolution input at a small
+# accuracy cost, which is not worth it for images already downscaled to 800 px.
 extraction_options.loma.use_bf16 = True
 
 pycolmap.extract_features(
@@ -64,7 +66,7 @@ pycolmap.extract_features(
 matching_options = pycolmap.FeatureMatchingOptions(
     type=pycolmap.FeatureMatcherType.LOMA_B,
 )
-matching_options.loma.use_bf16 = True
+matching_options.loma.use_bf16 = True  # same bf16 caveat as above
 
 pycolmap.match_exhaustive(
     database_path=database_path,
