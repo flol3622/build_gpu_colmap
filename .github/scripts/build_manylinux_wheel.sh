@@ -564,7 +564,17 @@ for name in (
     )
     dependencies = result.stdout + result.stderr
     assert result.returncode == 0, dependencies
-    assert "not found" not in dependencies, dependencies
+    # libcuda.so.1 belongs to the NVIDIA driver, never to a wheel, and the
+    # repair step excludes it on purpose. ONNX Runtime's CUDA provider links it
+    # directly, so it cannot resolve on a driverless CI runner. That is the one
+    # acceptable gap: everything the wheel itself or the pinned NVIDIA pip
+    # packages provide must still resolve here.
+    unresolved = {
+        line.split("=>")[0].strip()
+        for line in dependencies.splitlines()
+        if "not found" in line
+    }
+    assert unresolved <= {"libcuda.so.1"}, dependencies
 
 # cuDNN loads its split libraries with dlopen(), so ldd cannot prove that the
 # legacy API used by ONNX Runtime is present. Check the exact external-package
