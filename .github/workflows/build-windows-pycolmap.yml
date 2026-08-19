@@ -31,21 +31,17 @@ jobs:
       - name: Fetch pinned submodules
         run: git submodule update --init --recursive --checkout
 
-      - name: Apply pycolmap Caspar bindings patch
+      # The Caspar pycolmap bindings are upstream as of COLMAP main; the local
+      # patch that used to add them has been removed. Keep the release gate by
+      # verifying that the pinned source really exposes the Caspar backend.
+      - name: Verify upstream Caspar pycolmap bindings
         shell: bash
         run: |
-          PATCH_FILE="${GITHUB_WORKSPACE}/patches/pycolmap-caspar-bindings.patch"
-          if git -C third_party/colmap-for-pycolmap apply --check "$PATCH_FILE"; then
-            git -C third_party/colmap-for-pycolmap apply "$PATCH_FILE"
-            echo "pycolmap Caspar bindings patch applied"
-          elif git -C third_party/colmap-for-pycolmap apply --reverse --check "$PATCH_FILE"; then
-            echo "pycolmap Caspar bindings patch already applied"
-          elif git -C third_party/colmap-for-pycolmap grep -q "BundleAdjustmentBackend::CASPAR" -- src/pycolmap/estimators/bundle_adjustment.cc; then
-            echo "Upstream already provides Caspar pycolmap bindings; skipping obsolete patch"
-          else
-            echo "ERROR: pycolmap Caspar bindings patch does not apply and upstream Caspar bindings not found"
+          if ! git -C third_party/colmap-for-pycolmap grep -q "BundleAdjustmentBackend::CASPAR" -- src/pycolmap/estimators/bundle_adjustment.cc; then
+            echo "ERROR: the pinned pycolmap source does not expose the Caspar bundle adjustment backend"
             exit 1
           fi
+          echo "Upstream pycolmap source exposes the Caspar bundle adjustment backend"
 
       - name: Apply pycolmap NVIDIA runtime preloader patch
         shell: bash
@@ -276,7 +272,7 @@ jobs:
         run: |
           python .github/scripts/stamp_pycolmap_wheel.py \
             third_party/colmap-for-pycolmap/pyproject.toml \
-            --version "4.1.1+cu128.pipcuda.cudss" \
+            --version "4.2.0.dev0+cu128.pipcuda.cudss" \
             --external-nvidia-runtime \
             --with-cudss
 
@@ -539,14 +535,14 @@ jobs:
             exit 1
           }
 
-          $alikedHome = Join-Path $env:RUNNER_TEMP "pycolmap-aliked-download-test"
-          Remove-Item -Recurse -Force $alikedHome -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force -Path $alikedHome | Out-Null
-          $env:USERPROFILE = $alikedHome
-          & $python "$env:GITHUB_WORKSPACE/.github/scripts/validate_aliked_download.py"
+          $modelHome = Join-Path $env:RUNNER_TEMP "pycolmap-model-download-test"
+          Remove-Item -Recurse -Force $modelHome -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $modelHome | Out-Null
+          $env:USERPROFILE = $modelHome
+          & $python "$env:GITHUB_WORKSPACE/.github/scripts/validate_model_downloads.py"
 
           if ($LASTEXITCODE -ne 0) {
-            Write-Host "ERROR: ALIKED default-model download test failed" -ForegroundColor Red
+            Write-Host "ERROR: default-model download test failed" -ForegroundColor Red
             exit 1
           }
           Write-Host "pycolmap smoke test passed" -ForegroundColor Green
@@ -556,7 +552,7 @@ jobs:
         shell: pwsh
         working-directory: third_party/colmap-for-pycolmap
         run: |
-          $expected = "pycolmap-4.1.1+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl"
+          $expected = "pycolmap-4.2.0.dev0+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl"
           $wheels = @(Get-ChildItem -Path wheelhouse -Filter "*.whl")
           if ($wheels.Count -ne 1 -or $wheels[0].Name -ne $expected) {
             Write-Host "ERROR: Expected only $expected; found $($wheels.Name -join ', ')" -ForegroundColor Red
@@ -566,12 +562,12 @@ jobs:
           from pathlib import Path
           from zipfile import ZipFile
 
-          wheel = Path("wheelhouse/pycolmap-4.1.1+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl")
+          wheel = Path("wheelhouse/pycolmap-4.2.0.dev0+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl")
           with ZipFile(wheel) as archive:
               metadata_name = next(n for n in archive.namelist() if n.endswith(".dist-info/METADATA"))
               metadata = archive.read(metadata_name).decode()
               names = tuple(archive.namelist())
-          assert "\nVersion: 4.1.1+cu128.pipcuda.cudss\n" in f"\n{metadata}"
+          assert "\nVersion: 4.2.0.dev0+cu128.pipcuda.cudss\n" in f"\n{metadata}"
           required = (
               "nvidia-cuda-runtime-cu12",
               "nvidia-cublas-cu12",

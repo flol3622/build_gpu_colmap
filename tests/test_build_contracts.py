@@ -166,8 +166,53 @@ class NvidiaRuntimePreloadContractTests(unittest.TestCase):
             "assert str(cudss_library) in loaded_libraries", linux
         )
         self.assertIn(
-            'env -u LD_LIBRARY_PATH HOME="$ALIKED_TEST_HOME"', linux
+            'env -u LD_LIBRARY_PATH HOME="$MODEL_TEST_HOME"', linux
         )
+
+
+class UpstreamCasparBindingsTests(unittest.TestCase):
+    """The Caspar bindings live upstream now; the local patch is gone."""
+
+    def test_obsolete_caspar_patch_is_not_reintroduced(self) -> None:
+        self.assertFalse(
+            (ROOT / "patches/pycolmap-caspar-bindings.patch").exists(),
+            "the Caspar bindings patch is obsolete: upstream provides them",
+        )
+
+    def test_pinned_source_exposes_caspar_backend(self) -> None:
+        source = (
+            ROOT
+            / "third_party/colmap-for-pycolmap"
+            / "src/pycolmap/estimators/bundle_adjustment.cc"
+        )
+        text = source.read_text()
+        self.assertIn("BundleAdjustmentBackend::CASPAR", text)
+        self.assertIn("CasparBundleAdjustmentOptions", text)
+
+    def test_builders_gate_on_upstream_caspar_bindings(self) -> None:
+        for content in (WINDOWS_WORKFLOW.read_text(), LINUX_BUILDER.read_text()):
+            self.assertIn("BundleAdjustmentBackend::CASPAR", content)
+            self.assertNotIn("pycolmap-caspar-bindings.patch", content)
+
+
+class LomaIntegrationTests(unittest.TestCase):
+    """LoMa is the reason the pinned COLMAP moved past 4.1.1."""
+
+    def test_pinned_source_exposes_loma(self) -> None:
+        root = ROOT / "third_party/colmap-for-pycolmap"
+        self.assertIn(
+            "LOMA_B", (root / "src/pycolmap/feature/types.cc").read_text()
+        )
+        self.assertIn(
+            "FeatureMatcherType::LOMA_B",
+            (root / "src/pycolmap/feature/matching.cc").read_text(),
+        )
+        self.assertTrue((root / "src/colmap/feature/loma.h").is_file())
+
+    def test_download_gate_covers_loma(self) -> None:
+        gate = (ROOT / ".github/scripts/validate_model_downloads.py").read_text()
+        self.assertIn("FeatureExtractorType.LOMA_B", gate)
+        self.assertIn("FeatureExtractorType.ALIKED_N16ROT", gate)
 
 
 if __name__ == "__main__":

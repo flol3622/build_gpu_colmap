@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 # CUDA 12.8 Update 1 component versions from NVIDIA's redistrib_12.8.1.json.
-# cuDNN is pinned to the version expected by ONNX Runtime 1.24.4, and cuDSS
+# cuDNN is pinned to the version expected by ONNX Runtime 1.27.1, and cuDSS
 # matches the version used to compile Ceres in the maintained wheel builds.
 NVIDIA_RUNTIME_REQUIREMENTS = (
     "nvidia-cuda-runtime-cu12==12.8.90",

@@ -18,7 +18,7 @@ toolkit, no `cmake` afternoon on your machine.
 | | |
 | --- | --- |
 | **What** | Two maxed-out wheels: Linux x86_64 (glibc 2.34+) and Windows x86_64 |
-| **Inside** | COLMAP 4.1.1 · CUDA 12.8.1 · cuDNN 9.10.2 · cuDSS 0.7.1 · ONNX Runtime GPU · ALIKED/LightGlue · Caspar bundle adjustment |
+| **Inside** | COLMAP main (4.2.0.dev0) · CUDA 12.8.1 · cuDNN 9.10.2 · cuDSS 0.7.1 · ONNX Runtime GPU · ALIKED/LightGlue · LoMa · Caspar bundle adjustment |
 | **You need** | An NVIDIA driver. That's it — the CUDA runtime arrives as pinned pip dependencies |
 | **For** | Researchers and engineers who want GPU SfM/MVS from Python and don't want to spend a day on `cmake` |
 

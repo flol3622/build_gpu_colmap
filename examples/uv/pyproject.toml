@@ -3,11 +3,14 @@ name = "pycolmap-gpu-consumer"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-  "pycolmap>=4.1.1,<4.2; (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
+  "pycolmap>=4.2.0.dev0,<4.3; (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
 ]
 
 [tool.uv]
 package = false
+# The wheels track COLMAP main (4.2.0.dev0), which PEP 440 treats as a
+# prerelease, so resolution has to opt in explicitly.
+prerelease = "allow"
 required-environments = [
   "sys_platform == 'linux' and platform_machine == 'x86_64'",
   "sys_platform == 'win32' and platform_machine == 'AMD64'",
@@ -15,6 +18,6 @@ required-environments = [
 
 [tool.uv.sources]
 pycolmap = [
-  { url = "https://github.com/flol3622/build_gpu_colmap/releases/download/pycolmap-4.1.1-cu128-cudss-r1/pycolmap-4.1.1%2Bcu128.pipcuda.cudss-cp312-cp312-manylinux_2_34_x86_64.whl", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
-  { url = "https://github.com/flol3622/build_gpu_colmap/releases/download/pycolmap-4.1.1-cu128-cudss-r1/pycolmap-4.1.1%2Bcu128.pipcuda.cudss-cp312-cp312-win_amd64.whl", marker = "sys_platform == 'win32' and platform_machine == 'AMD64'" },
+  { url = "https://github.com/flol3622/build_gpu_colmap/releases/download/pycolmap-4.2.0.dev0-cu128-cudss-r1/pycolmap-4.2.0.dev0%2Bcu128.pipcuda.cudss-cp312-cp312-manylinux_2_34_x86_64.whl", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
+  { url = "https://github.com/flol3622/build_gpu_colmap/releases/download/pycolmap-4.2.0.dev0-cu128-cudss-r1/pycolmap-4.2.0.dev0%2Bcu128.pipcuda.cudss-cp312-cp312-win_amd64.whl", marker = "sys_platform == 'win32' and platform_machine == 'AMD64'" },
 ]

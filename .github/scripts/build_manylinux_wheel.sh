@@ -10,7 +10,7 @@ MANYLINUX_TAG="${MANYLINUX_TAG:-manylinux_2_34_x86_64}"
 BUNDLE_CUDA="${BUNDLE_CUDA:-false}"
 WITH_CUDSS="${WITH_CUDSS:-true}"
 CUDSS_VERSION="${CUDSS_VERSION:-0.7.1.4}"
-# COLMAP 4.1.1 fetches ONNX Runtime 1.24.4's CUDA 12 provider. Its CUDA EP uses
+# The pinned COLMAP fetches ONNX Runtime 1.27.1's CUDA 12 provider. Its CUDA EP uses
 # cuDNN's legacy API as well as the graph API, so the reduced JIT-only package
 # is insufficient (for example, ALIKED needs cudnnCreateFilterDescriptor from
 # libcudnn_ops). Keep this version aligned with ONNX Runtime's CUDA provider.
@@ -121,7 +121,7 @@ dnf clean all
 ONNXRUNTIME_CUDA_PACKAGES=()
 CUDNN_PACKAGES=()
 if [[ "$CUDA_MAJOR" -ge 13 ]]; then
-  # ONNX Runtime 1.24.4's published Linux GPU provider is linked against the
+  # ONNX Runtime 1.27.1's published Linux GPU provider is linked against the
   # CUDA 12 ABI even when the surrounding COLMAP build targets CUDA 13.
   ONNXRUNTIME_CUDA_PACKAGES+=(cuda-libraries-12-8)
 fi
@@ -202,17 +202,14 @@ if git -C third_party/vcpkg rev-parse --is-shallow-repository | grep -Fx true >/
   git -C third_party/vcpkg fetch --unshallow
 fi
 
-PATCH_FILE=/workspace/patches/pycolmap-caspar-bindings.patch
-if git -C third_party/colmap-for-pycolmap apply --check "$PATCH_FILE"; then
-  git -C third_party/colmap-for-pycolmap apply "$PATCH_FILE"
-elif git -C third_party/colmap-for-pycolmap apply --reverse --check "$PATCH_FILE"; then
-  echo "pycolmap Caspar bindings patch is already applied"
-elif git -C third_party/colmap-for-pycolmap grep -q \
+# The Caspar pycolmap bindings are upstream as of COLMAP main; the local patch
+# that used to add them has been removed. Keep the release gate by verifying
+# that the pinned source really exposes the Caspar backend.
+if ! git -C third_party/colmap-for-pycolmap grep -q \
   "BundleAdjustmentBackend::CASPAR" -- src/pycolmap/estimators/bundle_adjustment.cc; then
-  echo "Upstream already contains the Caspar bindings"
-else
-  die "The pycolmap Caspar bindings patch cannot be applied"
+  die "The pinned pycolmap source does not expose the Caspar bundle adjustment backend"
 fi
+echo "Upstream pycolmap source exposes the Caspar bundle adjustment backend"
 
 PATCH_FILE=/workspace/patches/pycolmap-nvidia-runtime-preload.patch
 if git -C third_party/colmap-for-pycolmap apply --check "$PATCH_FILE"; then
@@ -615,9 +612,9 @@ if external_runtime:
 print(f"Smoke test passed for pycolmap {pycolmap.__version__}")
 PY
 
-ALIKED_TEST_HOME="$(mktemp -d)"
-env -u LD_LIBRARY_PATH HOME="$ALIKED_TEST_HOME" \
-  python .github/scripts/validate_aliked_download.py
-rm -rf "$ALIKED_TEST_HOME"
+MODEL_TEST_HOME="$(mktemp -d)"
+env -u LD_LIBRARY_PATH HOME="$MODEL_TEST_HOME" \
+  python .github/scripts/validate_model_downloads.py
+rm -rf "$MODEL_TEST_HOME"
 
 echo "Built and validated: $REPAIRED_WHEEL"
