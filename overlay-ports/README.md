@@ -15,6 +15,15 @@ ship non-portable binaries. The port forces `TARGET=PRESCOTT` with
 in the root `vcpkg.json`) and `TARGET=NEHALEM` on Windows, where dispatch is
 unavailable under MSVC.
 
+The local `gmp` port exists only to fix a dead download. On Windows the
+pinned vcpkg baseline's gmp port fetches `autoconf2.71-2.71-3` directly from
+the MSYS2 mirrors, but MSYS2 rolled that package to `-4` and deleted the old
+build, so every mirror now returns 404 and `gmp:x64-windows` fails to
+configure. This port is the baseline's gmp with upstream's fix
+([vcpkg#53437](https://github.com/microsoft/vcpkg/pull/53437)) applied: the
+`-4` URL and its SHA512. Drop it once the pinned vcpkg baseline moves past
+2026-08-15.
+
 The top-level CMake project passes this directory through
 `VCPKG_OVERLAY_PORTS`. Keep only overrides required by the two maintained wheel
 builds, and remove an override once the pinned vcpkg baseline contains the fix.
