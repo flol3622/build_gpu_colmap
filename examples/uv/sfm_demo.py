@@ -1,7 +1,26 @@
+# /// script
+# requires-python = ">=3.12,<3.13"
+# dependencies = ["pycolmap>=4.2.0.dev0,<4.3"]
+#
+# [tool.uv]
+# prerelease = "allow"
+#
+# [[tool.uv.sources.pycolmap]]
+# url = "https://github.com/flol3622/build_gpu_colmap/releases/download/pycolmap-4.2.0.dev0-cu128-cudss-r1/pycolmap-4.2.0.dev0%2Bcu128.pipcuda.cudss-cp312-cp312-manylinux_2_34_x86_64.whl"
+# marker = "sys_platform == 'linux' and platform_machine == 'x86_64'"
+#
+# [[tool.uv.sources.pycolmap]]
+# url = "https://github.com/flol3622/build_gpu_colmap/releases/download/pycolmap-4.2.0.dev0-cu128-cudss-r1/pycolmap-4.2.0.dev0%2Bcu128.pipcuda.cudss-cp312-cp312-win_amd64.whl"
+# marker = "sys_platform == 'win32' and platform_machine == 'AMD64'"
+# ///
 """Monstree mini6 in, bundle-adjusted sparse point cloud out.
 
 LoMa-B (CUDA) -> LoMa-B matcher -> GLOMAP global SfM -> Caspar/cuDSS bundle
 adjustment -> sparse.ply
+
+Needs a CUDA GPU with ~8 GB of VRAM: fp32 LoMa-B loads ~2.2 GB of weights and
+then allocates its inference workspace on top. On a smaller card, switch to
+bf16 below.
 
 Run: uv run sfm_demo.py
 """
@@ -42,36 +61,30 @@ database_path.unlink(missing_ok=True)
 sparse_dir = work_dir / "sparse"
 sparse_dir.mkdir(parents=True, exist_ok=True)
 
-extraction_options = pycolmap.FeatureExtractionOptions(
-    type=pycolmap.FeatureExtractorType.LOMA_B,
-    num_threads=1,  # one image on the GPU at a time
-)
-# 2048 is the LoMa default; 4096 is the quality-first setting.
-extraction_options.loma.max_num_features = 2048
-# bf16 needs Ampere or newer. The fallback is not free: COLMAP downloads the
-# bf16 model, tries to initialize it, and only drops to fp32 once ONNX Runtime
-# raises. On a pre-Ampere GPU that costs an extra ~690 MB descriptor download
-# for nothing, so set this to False there. use_fast_resize stays off (the
-# default): it buys 2-3x faster extraction on full-resolution input at a small
-# accuracy cost, which is not worth it for images already downscaled to 800 px.
-extraction_options.loma.use_bf16 = True
-
 pycolmap.extract_features(
     database_path=database_path,
     image_path=image_dir,
     device=pycolmap.Device.cuda,
-    extraction_options=extraction_options,
+    extraction_options=pycolmap.FeatureExtractionOptions(
+        type=pycolmap.FeatureExtractorType.LOMA_B,
+        num_threads=1,  # one image on the GPU at a time
+        loma=pycolmap.LomaExtractionOptions(
+            max_num_features=2048,  # LoMa default; 4096 buys quality
+            # Uncomment on a small-VRAM GPU: bf16 halves the weights (~1.2 GB
+            # instead of ~2.2 GB) and is the only way LoMa-B fits in 4 GB. It
+            # is also faster on Ampere or newer; older cards emulate it.
+            # use_bf16=True,
+        ),
+    ),
 )
-
-matching_options = pycolmap.FeatureMatchingOptions(
-    type=pycolmap.FeatureMatcherType.LOMA_B,
-)
-matching_options.loma.use_bf16 = True  # same bf16 caveat as above
 
 pycolmap.match_exhaustive(
     database_path=database_path,
     device=pycolmap.Device.cuda,
-    matching_options=matching_options,
+    matching_options=pycolmap.FeatureMatchingOptions(
+        type=pycolmap.FeatureMatcherType.LOMA_B,
+        # loma=pycolmap.LomaMatchingOptions(use_bf16=True),
+    ),
 )
 
 reconstruction = pycolmap.global_mapping(
