@@ -18,9 +18,8 @@
 LoMa-B (CUDA) -> LoMa-B matcher -> GLOMAP global SfM -> Caspar/cuDSS bundle
 adjustment -> sparse.ply
 
-Needs a CUDA GPU with ~8 GB of VRAM: fp32 LoMa-B loads ~2.2 GB of weights and
-then allocates its inference workspace on top. On a smaller card, switch to
-bf16 below.
+Runs on a 4 GB card: fp32 LoMa-B loads ~2.2 GB of weights. bf16 halves that
+if you are tight on memory -- see below.
 
 Run: uv run sfm_demo.py
 """
@@ -70,9 +69,9 @@ pycolmap.extract_features(
         num_threads=1,  # one image on the GPU at a time
         loma=pycolmap.LomaExtractionOptions(
             max_num_features=2048,  # LoMa default; 4096 buys quality
-            # Uncomment on a small-VRAM GPU: bf16 halves the weights (~1.2 GB
-            # instead of ~2.2 GB) and is the only way LoMa-B fits in 4 GB. It
-            # is also faster on Ampere or newer; older cards emulate it.
+            # Uncomment to halve descriptor weights (~1.2 GB instead of
+            # ~2.2 GB). Ampere or newer runs bf16 natively; the bf16 matcher
+            # falls back to fp32 on its own when the GPU cannot place it.
             # use_bf16=True,
         ),
     ),
