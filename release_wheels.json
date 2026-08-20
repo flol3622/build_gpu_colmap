@@ -1,18 +1,18 @@
 {
-  "release_tag": "pycolmap-4.1.1-cu128-cudss-r1",
+  "release_tag": "pycolmap-4.2.0.dev0-cu128-cudss-r1",
   "assets": {
     "linux": {
-      "filename": "pycolmap-4.1.1+cu128.pipcuda.cudss-cp312-cp312-manylinux_2_34_x86_64.whl",
-      "sha256": "649872c71143de813c1cb4a5ee60ae3d4e3c3a18fa026c3c21b6c70b31d11b64",
-      "size": 314479548,
-      "metadata_sha256": "c73d657c18e0d3a562052a8968b988f58b72b23349e919e7d4b5a2d8b7b637d3",
+      "filename": "pycolmap-4.2.0.dev0+cu128.pipcuda.cudss-cp312-cp312-manylinux_2_34_x86_64.whl",
+      "sha256": "21e6aa669030a5de5499e32f81fb45ff393ffd8b9b61f9b6b937f8a6d43cb613",
+      "size": 355013048,
+      "metadata_sha256": "a1b2393b7d0428ad0ceaf1663e8fbc63c26701e088319589905a5f2394f3bba1",
       "wheel_metadata_sha256": "7d1aaac129bf355bf7cfb7b0539edb6abd3622543e66153b1f3492ba114d62f4"
     },
     "windows": {
-      "filename": "pycolmap-4.1.1+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl",
-      "sha256": "c376dba50ece027acb9d7e85cdc2b3dbaebc960c35519de98bbbeae593fdef8a",
-      "size": 265898260,
-      "metadata_sha256": "c73d657c18e0d3a562052a8968b988f58b72b23349e919e7d4b5a2d8b7b637d3",
+      "filename": "pycolmap-4.2.0.dev0+cu128.pipcuda.cudss-cp312-cp312-win_amd64.whl",
+      "sha256": "a28500c1bba9cd6d75448e416d85bf0f08dc1f1d8c835df43159a0e525f39f79",
+      "size": 302745758,
+      "metadata_sha256": "a1b2393b7d0428ad0ceaf1663e8fbc63c26701e088319589905a5f2394f3bba1",
       "wheel_metadata_sha256": "f15bc60f9bb7ebe0d4e917d2e3627494a9115477e597efbaa12905cd60a9153b"
     }
   }
